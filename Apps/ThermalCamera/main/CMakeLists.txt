@@ -1,16 +1,11 @@
-file(GLOB_RECURSE SOURCES
-    "Source/*.c"
-    "Source/*.cpp"
+file(GLOB_RECURSE SOURCE_FILES
+    Source/*.c*
 )
 
 idf_component_register(
-    SRCS ${SOURCES}
-    INCLUDE_DIRS "Source"
-    REQUIRES
-        tactility
-        tactility_lvgl
-        lvgl
-        freertos
+    SRCS ${SOURCE_FILES}
+    # Library headers must be included directly,
+    # because all regular dependencies get stripped by elf_loader's cmake script
+    INCLUDE_DIRS ../../../Libraries/TactilityCpp/Include
+    REQUIRES TactilitySDK
 )
-
-target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-missing-field-initializers)
