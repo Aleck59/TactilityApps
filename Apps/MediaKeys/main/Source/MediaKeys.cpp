@@ -4,9 +4,9 @@
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <lvgl/lvgl_fonts.h>
+#include <lvgl/fonts.h>
 #include <lvgl/lvgl.h>
-#include <tt_lvgl_toolbar.h>
+#include <lvgl/widgets/toolbar.h>
 
 static const char* TAG = "MediaKeys";
 
@@ -165,7 +165,7 @@ void MediaKeys::btEventCallback(struct Device* /*device*/, void* context, struct
             // Radio dropped while we were active - revert UI
             LOG_I(TAG, "BT radio turned off, disabling HID");
             if (lvgl_try_lock(1000)) {
-                if (tt_lvgl_hardware_keyboard_is_available()) self->exitKeyMode();
+                if (device_has_active_by_type(&KEYBOARD_TYPE)) self->exitKeyMode();
                 self->_hidDevice = nullptr;
                 self->_isEnabled = false;
                 self->_radioEnabling = false;
@@ -208,7 +208,7 @@ void MediaKeys::startHid() {
     }
 
     if (_mainWrapper) lv_obj_remove_flag(_mainWrapper, LV_OBJ_FLAG_HIDDEN);
-    if (tt_lvgl_hardware_keyboard_is_available()) enterKeyMode();
+    if (device_has_active_by_type(&KEYBOARD_TYPE)) enterKeyMode();
 }
 
 void MediaKeys::teardownBt() {
@@ -276,7 +276,7 @@ void MediaKeys::handleSwitchToggle(bool enabled) {
         }
     } else {
         _radioEnabling = false;
-        if (tt_lvgl_hardware_keyboard_is_available()) exitKeyMode();
+        if (device_has_active_by_type(&KEYBOARD_TYPE)) exitKeyMode();
         // Explicit user toggle-off: stop HID cleanly (safe here since we're on the
         // LVGL task and the user intentionally disabled, so no race with app teardown).
         if (_hidDevice) bluetooth_hid_device_stop(_hidDevice);
@@ -307,10 +307,10 @@ void MediaKeys::onShow(AppHandle appHandle, lv_obj_t* parent) {
     lv_obj_remove_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
 
-    lv_obj_t* toolbar = tt_lvgl_toolbar_create_for_app(parent, appHandle);
+    lv_obj_t* toolbar = lvgl_toolbar_create(parent, "Media Keys");
     lv_obj_align(toolbar, LV_ALIGN_TOP_MID, 0, 0);
 
-    _switchWidget = tt_lvgl_toolbar_add_switch_action(toolbar);
+    _switchWidget = lvgl_toolbar_add_switch_action(toolbar);
     lv_obj_add_event_cb(_switchWidget, onSwitchToggled, LV_EVENT_VALUE_CHANGED, this);
 
     _mainWrapper = lv_obj_create(parent);
@@ -342,7 +342,7 @@ void MediaKeys::onShow(AppHandle appHandle, lv_obj_t* parent) {
     lv_obj_add_event_cb(_buttonMatrix, onButtonPressed, LV_EVENT_VALUE_CHANGED, this);
 
     // Physical keyboard support: key events on the matrix (entered when BT enabled, Q/Esc exits)
-    if (tt_lvgl_hardware_keyboard_is_available()) {
+    if (device_has_active_by_type(&KEYBOARD_TYPE)) {
         lv_obj_add_event_cb(_buttonMatrix, onKeyEvent, LV_EVENT_KEY, this);
         _keyHighlightTimer = lv_timer_create(onKeyHighlightTimer, 150, this);
         lv_timer_pause(_keyHighlightTimer);
@@ -364,7 +364,7 @@ void MediaKeys::onShow(AppHandle appHandle, lv_obj_t* parent) {
 void MediaKeys::onHide(AppHandle /*appHandle*/) {
     _radioEnabling = false;
     _isEnabled = false;
-    if (tt_lvgl_hardware_keyboard_is_available()) exitKeyMode();
+    if (device_has_active_by_type(&KEYBOARD_TYPE)) exitKeyMode();
     teardownBt();
     if (_keyHighlightTimer) {
         lv_timer_delete(_keyHighlightTimer);

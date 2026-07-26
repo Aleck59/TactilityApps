@@ -1,9 +1,9 @@
 #include "Diceware.h"
 
 #include <tt_app_alertdialog.h>
-#include <tt_lock.h>
+#include <tactility/filesystem/file_mutex.h>
 #include <lvgl/lvgl.h>
-#include <tt_lvgl_toolbar.h>
+#include <lvgl/widgets/toolbar.h>
 
 #include <esp_random.h>
 #include <esp_log.h>
@@ -39,18 +39,17 @@ static std::string readWordAtLine(const AppHandle handle, const int lineIndex) {
         return "";
     }
 
-    auto lock = tt_lock_alloc_for_path(path);
+    struct FileMutex mutex;
+    file_mutex_get(&mutex, path);
     std::string word;
-    if (tt_lock_acquire(lock, tt::kernel::MAX_TICKS)) {
-        FILE* file = fopen(path, "r");
-        if (file != nullptr) {
-            skipNewlines(file, lineIndex);
-            word = readWord(file);
-            fclose(file);
-        } else { ESP_LOGE(TAG, "Failed to open %s", path); }
-        tt_lock_release(lock);
-    } else { ESP_LOGE(TAG, "Failed to acquire lock for %s", path); }
-    tt_lock_free(lock);
+    file_mutex_lock(&mutex);
+    FILE* file = fopen(path, "r");
+    if (file != nullptr) {
+        skipNewlines(file, lineIndex);
+        word = readWord(file);
+        fclose(file);
+    } else { ESP_LOGE(TAG, "Failed to open %s", path); }
+    file_mutex_unlock(&mutex);
     return word;
 }
 
@@ -123,8 +122,8 @@ void Diceware::onShow(AppHandle appHandle, lv_obj_t* parent) {
     lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(parent, 0, LV_STATE_DEFAULT);
 
-    auto* toolbar = tt_lvgl_toolbar_create_for_app(parent, appHandle);
-    tt_lvgl_toolbar_add_text_button_action(toolbar, "?", onHelpClicked, nullptr);
+    auto* toolbar = lvgl_toolbar_create(parent, "Diceware");
+    lvgl_toolbar_add_text_button_action(toolbar, "?", onHelpClicked, nullptr);
 
     auto* wrapper = lv_obj_create(parent);
     lv_obj_set_style_border_width(wrapper, 0, LV_STATE_DEFAULT);

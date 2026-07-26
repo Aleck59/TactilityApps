@@ -7,13 +7,14 @@
 
 #include <cstdio>
 #include <cmath>
-#include <tt_lvgl_toolbar.h>
+#include <lvgl/widgets/toolbar.h>
 #include <tt_preferences.h>
 #include <esp_random.h>
-#include <tt_lvgl_keyboard.h>
+#include <tactility/device.h>
+#include <tactility/drivers/keyboard.h>
 
 #include <lvgl/lvgl.h>
-#include <lvgl/lvgl_fonts.h>
+#include <lvgl/fonts.h>
 
 constexpr auto* TAG = "Breakout";
 
@@ -128,7 +129,7 @@ void Breakout::onShow(AppHandle appHandle, lv_obj_t* parent) {
     }
 
     // Toolbar
-    lv_obj_t* toolbar = tt_lvgl_toolbar_create_for_app(parent, appHandle);
+    lv_obj_t* toolbar = lvgl_toolbar_create(parent, "Breakout");
 
     // Score wrapper in toolbar
     lv_obj_t* scoreWrap = lv_obj_create(toolbar);
@@ -1329,7 +1330,7 @@ void Breakout::updateMessage() {
         case GameState::Ready: {
             char buf[64];
             const char* input_hint = "Touch";
-            if (tt_lvgl_hardware_keyboard_is_available()) {
+            if (device_has_active_by_type(&KEYBOARD_TYPE)) {
                 input_hint = "Space";
             }
             if (level > 1) {

@@ -1,11 +1,10 @@
 #include "TodoList.h"
 #include <tt_app.h>
-#include <tt_lock.h>
+#include <tactility/filesystem/file_mutex.h>
 #include <Tactility/kernel/Kernel.h>
-#include <tt_lvgl_toolbar.h>
-#include <tt_lvgl_keyboard.h>
+#include <lvgl/widgets/toolbar.h>
 #include <lvgl/lvgl.h>
-#include <lvgl/lvgl_fonts.h>
+#include <lvgl/fonts.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,52 +59,48 @@ void TodoList::saveTodos() {
     char savePath[256];
     if (!getSaveFilePath(savePath, sizeof(savePath))) return;
 
-    auto lock = tt_lock_alloc_for_path(savePath);
-    if (!lock) return;
-    if (tt_lock_acquire(lock, tt::kernel::MAX_TICKS)) {
-        FILE* f = fopen(savePath, "w");
-        if (f) {
-            for (int i = 0; i < count; i++) {
-                fprintf(f, "%c %s\n", items[i].done ? '+' : '-', items[i].text);
-            }
-            fclose(f);
+    struct FileMutex mutex;
+    file_mutex_get(&mutex, savePath);
+    file_mutex_lock(&mutex);
+    FILE* f = fopen(savePath, "w");
+    if (f) {
+        for (int i = 0; i < count; i++) {
+            fprintf(f, "%c %s\n", items[i].done ? '+' : '-', items[i].text);
         }
-        tt_lock_release(lock);
+        fclose(f);
     }
-    tt_lock_free(lock);
+    file_mutex_unlock(&mutex);
 }
 
 void TodoList::loadTodos() {
     char savePath[256];
     if (!getSaveFilePath(savePath, sizeof(savePath))) return;
 
-    auto lock = tt_lock_alloc_for_path(savePath);
-    if (!lock) return;
+    struct FileMutex mutex;
+    file_mutex_get(&mutex, savePath);
 
-    if (tt_lock_acquire(lock, tt::kernel::MAX_TICKS)) {
-        count = 0;
-        FILE* f = fopen(savePath, "r");
-        if (f) {
-            char line[MAX_TEXT_LEN + 4];
-            while (count < MAX_TODOS && fgets(line, sizeof(line), f)) {
-                size_t len = strlen(line);
-                while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
-                    line[--len] = '\0';
-                }
-
-                if (len < 3 || line[1] != ' ') continue;
-
-                TodoItem* item = &items[count];
-                item->done = (line[0] == '+');
-                strncpy(item->text, &line[2], MAX_TEXT_LEN - 1);
-                item->text[MAX_TEXT_LEN - 1] = '\0';
-                count++;
+    file_mutex_lock(&mutex);
+    count = 0;
+    FILE* f = fopen(savePath, "r");
+    if (f) {
+        char line[MAX_TEXT_LEN + 4];
+        while (count < MAX_TODOS && fgets(line, sizeof(line), f)) {
+            size_t len = strlen(line);
+            while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+                line[--len] = '\0';
             }
-            fclose(f);
+
+            if (len < 3 || line[1] != ' ') continue;
+
+            TodoItem* item = &items[count];
+            item->done = (line[0] == '+');
+            strncpy(item->text, &line[2], MAX_TEXT_LEN - 1);
+            item->text[MAX_TEXT_LEN - 1] = '\0';
+            count++;
         }
-        tt_lock_release(lock);
+        fclose(f);
     }
-    tt_lock_free(lock);
+    file_mutex_unlock(&mutex);
 }
 
 /* ── UI Helpers ───────────────────────────────────────────────────── */
@@ -277,7 +272,7 @@ void TodoList::onShow(AppHandle app, lv_obj_t* parent) {
     lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
 
     /* Toolbar */
-    lv_obj_t* toolbar = tt_lvgl_toolbar_create_for_app(parent, app);
+    lv_obj_t* toolbar = lvgl_toolbar_create(parent, "Todo List");
     lv_obj_align(toolbar, LV_ALIGN_TOP_MID, 0, 0);
 
     lv_obj_t* countWrapper = lv_obj_create(toolbar);
