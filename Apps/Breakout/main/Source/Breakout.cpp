@@ -12,8 +12,8 @@
 #include <esp_random.h>
 #include <tt_lvgl_keyboard.h>
 
-#include <tactility/lvgl_module.h>
-#include <tactility/lvgl_fonts.h>
+#include <lvgl/lvgl.h>
+#include <lvgl/lvgl_fonts.h>
 
 constexpr auto* TAG = "Breakout";
 

@@ -2,7 +2,7 @@
 
 #include <tt_app_alertdialog.h>
 #include <tt_lock.h>
-#include <tt_lvgl.h>
+#include <lvgl/lvgl.h>
 #include <tt_lvgl_toolbar.h>
 
 #include <esp_random.h>
@@ -87,9 +87,9 @@ void Diceware::startJob(uint32_t jobWordCount) {
 }
 
 void Diceware::onFinishJob(std::string result) {
-    tt_lvgl_lock(tt::kernel::MAX_TICKS);
+    lvgl_lock();
     lv_label_set_text(resultLabel, result.c_str());
-    tt_lvgl_unlock();
+    lvgl_unlock();
 }
 
 void Diceware::onClickGenerate(lv_event_t* e) {

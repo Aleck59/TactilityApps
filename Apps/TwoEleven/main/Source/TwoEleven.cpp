@@ -9,8 +9,8 @@
 #include <tt_app_alertdialog.h>
 #include <tt_app_selectiondialog.h>
 #include <tt_preferences.h>
-#include <tactility/lvgl_module.h>
-#include <tactility/lvgl_fonts.h>
+#include <lvgl/lvgl.h>
+#include <lvgl/lvgl_fonts.h>
 #include <TactilityCpp/LvglLock.h>
 
 constexpr auto* TAG = "TwoEleven";
