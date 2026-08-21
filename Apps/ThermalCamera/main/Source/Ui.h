@@ -8,7 +8,7 @@
 #pragma once
 
 #include <lvgl.h>
-#include <tactility/lvgl_fonts.h>
+#include <lvgl/fonts.h>
 
 inline int32_t uiWidth() { return lv_display_get_horizontal_resolution(nullptr); }
 

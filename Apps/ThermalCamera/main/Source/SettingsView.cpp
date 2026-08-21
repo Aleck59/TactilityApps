@@ -7,6 +7,9 @@
 
 #include <cstdio>
 
+#include <lvgl/fonts.h>
+#include <lvgl/widgets/toolbar.h>
+
 namespace {
 
 constexpr const char* INTERPOLATION_OPTIONS = "Off (raw pixels)\nLinear\nSmooth";
@@ -130,10 +133,14 @@ void ThermalCamera::updateSettingValueLabel(const SettingBinding& binding, int r
 // ---------------------------------------------------------------------------
 
 void ThermalCamera::buildSettingsView() {
-    if (content_ == nullptr) return;
-    clearContent();
+    if (root_ == nullptr) return;
+    resetView();
     showingSettings_ = true;
-    refreshToolbar();
+
+    // Here the navigation button returns to the image instead of closing the app.
+    toolbar_ = lvgl_toolbar_create(root_, "Settings");
+    lvgl_toolbar_set_nav_action(toolbar_, LV_SYMBOL_LEFT, onBackButton, this);
+    createContentArea();
 
     lv_obj_t* list = lv_obj_create(content_);
     lv_obj_set_width(list, LV_PCT(100));

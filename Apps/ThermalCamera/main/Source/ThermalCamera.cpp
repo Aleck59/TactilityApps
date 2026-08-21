@@ -7,8 +7,8 @@
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <lvgl/widgets/toolbar.h>
 #include <tactility/drivers/i2c_controller.h>
-#include <tt_lvgl_toolbar.h>
 
 namespace {
 
@@ -91,8 +91,8 @@ bool TactilityI2cBus::writeWord(uint16_t address, uint16_t value) {
 // Application lifecycle
 // ---------------------------------------------------------------------------
 
-void ThermalCamera::onCreate(AppHandle app) {
-    appHandle_ = app;
+void ThermalCamera::start(AppInstanceId appInstanceId) {
+    appInstanceId_ = appInstanceId;
 
     settingsLoad(settings_);
     taskSettings_ = settings_;
@@ -119,7 +119,7 @@ void ThermalCamera::onCreate(AppHandle app) {
     startAcquisition();
 }
 
-void ThermalCamera::onDestroy(AppHandle app) {
+void ThermalCamera::stop() {
     stopAcquisition();
     settingsSave(settings_);
 
@@ -142,12 +142,16 @@ void ThermalCamera::onDestroy(AppHandle app) {
         vSemaphoreDelete(mutex_);
         mutex_ = nullptr;
     }
-    appHandle_ = nullptr;
 }
 
-void ThermalCamera::onShow(AppHandle app, lv_obj_t* parent) {
-    appHandle_ = app;
+void ThermalCamera::createWidgets(lv_obj_t* parent) {
     root_ = parent;
+
+    // The window manager deletes this tree when another app takes the screen,
+    // without telling us directly. The delete event is that notification: the
+    // periodic timer is not part of the tree and would otherwise keep running
+    // against freed widgets.
+    lv_obj_add_event_cb(parent, onRootDeleted, LV_EVENT_DELETE, this);
 
     lv_obj_remove_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_layout(parent, LV_LAYOUT_FLEX);
@@ -155,10 +159,13 @@ void ThermalCamera::onShow(AppHandle app, lv_obj_t* parent) {
     lv_obj_set_style_pad_all(parent, 0, 0);
     lv_obj_set_style_pad_row(parent, 0, 0);
 
-    toolbar_ = tt_lvgl_toolbar_create_for_app(parent, app);
-    lv_obj_align(toolbar_, LV_ALIGN_TOP_MID, 0, 0);
+    if (imageBuffer_ == nullptr) allocateBuffers();
 
-    content_ = lv_obj_create(parent);
+    buildCameraView();
+}
+
+lv_obj_t* ThermalCamera::createContentArea() {
+    content_ = lv_obj_create(root_);
     lv_obj_remove_style_all(content_);
     lv_obj_set_width(content_, LV_PCT(100));
     lv_obj_set_flex_grow(content_, 1);
@@ -167,20 +174,20 @@ void ThermalCamera::onShow(AppHandle app, lv_obj_t* parent) {
     lv_obj_set_style_pad_all(content_, uiPad(), 0);
     lv_obj_set_style_pad_row(content_, uiPad(), 0);
     lv_obj_remove_flag(content_, LV_OBJ_FLAG_SCROLLABLE);
-
-    if (imageBuffer_ == nullptr) allocateBuffers();
-
-    showingSettings_ = false;
-    buildCameraView();
+    return content_;
 }
 
-void ThermalCamera::onHide(AppHandle app) {
+void ThermalCamera::onRootDeleted(lv_event_t* event) {
+    static_cast<ThermalCamera*>(lv_event_get_user_data(event))->releaseWidgets();
+}
+
+void ThermalCamera::releaseWidgets() {
     if (uiTimer_ != nullptr) {
         lv_timer_delete(uiTimer_);
         uiTimer_ = nullptr;
     }
 
-    // The framework deletes the widget tree that hangs off the parent object.
+    // The tree itself is already on its way out; only the references are dropped.
     root_ = nullptr;
     toolbar_ = nullptr;
     content_ = nullptr;
@@ -200,9 +207,12 @@ void ThermalCamera::onHide(AppHandle app) {
     rangeButton_ = nullptr;
     measureButton_ = nullptr;
     freezeButton_ = nullptr;
+    lastStatusMessage_ = nullptr;
     bindingCount_ = 0;
+}
 
-    settingsSave(settings_);
+void thermalCameraCreateWidgets(lv_obj_t* parent, void* userData) {
+    static_cast<ThermalCamera*>(userData)->createWidgets(parent);
 }
 
 // ---------------------------------------------------------------------------

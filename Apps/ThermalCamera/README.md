@@ -127,6 +127,19 @@ Or copy `Apps/ThermalCamera/build/ThermalCamera.app` to the device's SD card.
 `Tests/` contains host-side tests for the sensor maths, the renderer and the snapshot
 writer. See `Tests/README.md` for how to run them.
 
+## App structure
+
+The app targets SDK **0.8.0-dev**. `main()` is the entry point and owns the app for its
+whole lifetime: it creates the camera, registers a window with the window manager and
+then blocks on the app event queue until an `APP_EVENT_CLOSE` arrives.
+
+The widget tree is *not* owned by the app. `window_manager_create()` calls back into
+`thermalCameraCreateWidgets()` whenever this app owns the screen, and deletes that tree
+again when another app takes over — which can happen several times during a single run.
+The acquisition task and the buffers outlive those cycles, but the LVGL timer that drives
+the UI does not: it is torn down from an `LV_EVENT_DELETE` handler on the root widget,
+because that event is the only notification the app gets that its widgets are gone.
+
 ## A note on symbols
 
 An app is loaded as a relocatable ELF, and every call it makes into the firmware is
@@ -134,9 +147,14 @@ resolved at load time against a fixed symbol table. A symbol that is not in that
 builds fine — the ELF is linked with `-shared`, so unresolved symbols are allowed — and
 then fails at startup with *"Application failed to start: missing symbol"*.
 
-The C++ runtime is only partially exported: `operator new(size_t)` and the sized
-`operator delete` are, but the `nothrow` forms and the array forms are not. This app
-therefore uses `malloc`/`free` for its scratch buffers and holds the sensor by value.
+The C++ runtime is only partially exported: of the `operator new`/`operator delete`
+family only `operator new(size_t)` and the sized `operator delete` are in the table, so
+the `nothrow` forms, the array forms and the *unsized* `operator delete` are not. Rather
+than depend on which form the compiler happens to emit, this app references none of them:
+buffers come from `malloc`/`heap_caps_malloc`, the camera object is built with placement
+new on a `malloc`'d block, the sensor is held by value, and `MlxBus` has a non-virtual
+destructor so no deleting destructor lands in its vtable.
+
 The device log names the symbol that could not be resolved (`Can't find symbol ...`),
 which is the quickest way to diagnose this class of failure.
 
@@ -154,11 +172,11 @@ Apps/ThermalCamera/
 │       ├── Palette.{h,cpp}       palette generation
 │       ├── Settings.{h,cpp}      settings and their persistence
 │       ├── Snapshot.{h,cpp}      bitmap and CSV export
-│       ├── ThermalCamera.{h,cpp} app lifecycle and the acquisition task
+│       ├── ThermalCamera.{h,cpp} lifecycle, widget ownership, acquisition task
 │       ├── CameraView.cpp        live image, readouts and controls
 │       ├── SettingsView.cpp      settings screen
 │       ├── Ui.h                  layout helpers that scale with the display
-│       └── main.cpp              app registration
+│       └── main.cpp              entry point, window and app event loop
 └── Tests/
 ```
 

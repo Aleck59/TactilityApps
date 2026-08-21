@@ -6,6 +6,11 @@
  * never stall the user interface. The task publishes finished frames through a
  * mutex protected buffer; an LVGL timer picks them up, renders the false-colour
  * image and refreshes the readouts.
+ *
+ * The window manager owns the widget tree: it calls createWidgets() whenever
+ * this app becomes the visible one, and deletes the tree again when another app
+ * takes the screen. That can happen repeatedly while the app runs, so the
+ * widget references are dropped from the root widget's delete event.
  */
 #pragma once
 
@@ -14,15 +19,14 @@
 #include "Settings.h"
 #include "ThermalImage.h"
 
-#include <TactilityCpp/App.h>
-
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
+#include <app/instance.h>
 #include <lvgl.h>
+#include <lvgl_window_manager/window_manager.h>
 #include <tactility/device.h>
-#include <tt_app.h>
 
 /** MlxBus implementation on top of a Tactility I2C controller device. */
 class TactilityI2cBus final : public MlxBus {
@@ -53,12 +57,16 @@ struct SensorStatus {
     MlxInitStatus initStatus = MLX_INIT_NOT_STARTED;
 };
 
-class ThermalCamera final : public App {
+class ThermalCamera final {
 public:
-    void onCreate(AppHandle app) override;
-    void onDestroy(AppHandle app) override;
-    void onShow(AppHandle app, lv_obj_t* parent) override;
-    void onHide(AppHandle app) override;
+    /** Allocate the buffers and start polling the sensor. */
+    void start(AppInstanceId appInstanceId);
+
+    /** Stop polling, release the buffers and store the settings. */
+    void stop();
+
+    /** Build the widget tree; called by the window manager on the LVGL task. */
+    void createWidgets(lv_obj_t* parent);
 
 private:
     // ---- Sensor plumbing --------------------------------------------------
@@ -80,10 +88,11 @@ private:
     void rebuildColumnMap();
 
     // ---- View management --------------------------------------------------
-    void clearContent();
+    void releaseWidgets();
+    void resetView();
+    lv_obj_t* createContentArea();
     void buildCameraView();
     void buildSettingsView();
-    void refreshToolbar();
 
     // ---- Camera view ------------------------------------------------------
     void onUiTick();
@@ -109,6 +118,7 @@ private:
     static void onRangeButton(lv_event_t* event);
     static void onMeasureButton(lv_event_t* event);
     static void onImagePressed(lv_event_t* event);
+    static void onRootDeleted(lv_event_t* event);
     static void onSettingChanged(lv_event_t* event);
     static void onResetSettings(lv_event_t* event);
 
@@ -175,7 +185,7 @@ private:
     static constexpr int MAX_SETTING_BINDINGS = 24;
 
     // ---- State ------------------------------------------------------------
-    AppHandle appHandle_ = nullptr;
+    AppInstanceId appInstanceId_ = 0;
     CameraSettings settings_;
 
     Device* i2cDevice_ = nullptr;
@@ -262,3 +272,6 @@ private:
 
     char statusText_[80] = {};
 };
+
+/** window_manager_create()'s WindowCreateWidgetsFn - @a userData is the ThermalCamera. */
+void thermalCameraCreateWidgets(lv_obj_t* parent, void* userData);

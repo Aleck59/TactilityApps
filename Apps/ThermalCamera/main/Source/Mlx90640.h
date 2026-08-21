@@ -81,13 +81,18 @@ enum MlxPattern : uint8_t {
  */
 class MlxBus {
 public:
-    virtual ~MlxBus() = default;
-
     /** Read @p count 16-bit words starting at @p startAddress. */
     virtual bool readWords(uint16_t startAddress, uint16_t* out, size_t count) = 0;
 
     /** Write a single 16-bit register. */
     virtual bool writeWord(uint16_t address, uint16_t value) = 0;
+
+protected:
+    /** Non-virtual on purpose: implementations are held by value, never owned
+     *  through this interface. A virtual destructor would put a deleting
+     *  destructor in the vtable, and the deleting destructor calls a form of
+     *  operator delete that the ELF loader's symbol table does not export. */
+    ~MlxBus() = default;
 };
 
 /** Unpacked calibration data, roughly 11 kB. */
