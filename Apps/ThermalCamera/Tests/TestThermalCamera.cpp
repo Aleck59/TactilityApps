@@ -43,7 +43,7 @@ constexpr int GAIN_EE = 6552;
 std::vector<uint16_t> makeEeprom() {
     std::vector<uint16_t> ee(MLX_EEPROM_WORDS, 0);
 
-    ee[10] = 0x0040;             // valid device select, chess calibration
+    ee[10] = 0x0000;             // device select clear (a real part), chess calibration
     ee[16] = 0x2211;             // alphaPTAT nibble 2, occ scales 2/1/1
     ee[17] = 0xF830;             // offsetRef = -1992
     ee[32] = 0x8221;             // alphaScale 8, acc scales 2/2/1
@@ -427,12 +427,29 @@ int main() {
     testTemporalFilter();
     testBmpWriter();
 
-    // An EEPROM without the device-select bit must be rejected.
+    // A real MLX90640 has the device select bit of EE[10] clear. A set bit is
+    // recorded but must not stop the sensor from being used, because the
+    // calibration checks are the stronger evidence.
+    Mlx90640 otherPart;
+    auto deviceSelectSet = makeEeprom();
+    deviceSelectSet[10] = 0x0040;
+    FakeBus deviceSelectBus(deviceSelectSet);
+    check(otherPart.begin(&deviceSelectBus), "a set device select bit still initialises");
+    check(otherPart.hasDeviceSelectMismatch(), "the device select mismatch is reported");
+    check(!sensor.hasDeviceSelectMismatch(), "a real part reports no mismatch");
+    check(sensor.getInitStatus() == MLX_INIT_OK, "a good EEPROM reports MLX_INIT_OK");
+
+    // An EEPROM that carries no calibration at all must be refused.
     Mlx90640 rejected;
-    auto invalid = makeEeprom();
-    invalid[10] = 0x0000;
-    FakeBus invalidBus(invalid);
-    check(!rejected.begin(&invalidBus), "invalid EEPROM is rejected");
+    std::vector<uint16_t> blank(MLX_EEPROM_WORDS, 0);
+    FakeBus blankBus(blank);
+    check(!rejected.begin(&blankBus), "a blank EEPROM is rejected");
+    check(rejected.getInitStatus() == MLX_INIT_BAD_CALIBRATION, "blank EEPROM reports a bad calibration");
+
+    // A transport that cannot read must be distinguishable from a bad sensor.
+    Mlx90640 unreachable;
+    check(!unreachable.begin(nullptr), "a missing bus is refused");
+    check(unreachable.getInitStatus() == MLX_INIT_NO_BUS, "a missing bus reports MLX_INIT_NO_BUS");
 
     if (failures == 0) {
         printf("All checks passed\n");

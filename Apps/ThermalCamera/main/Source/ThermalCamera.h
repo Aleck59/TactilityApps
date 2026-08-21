@@ -49,6 +49,8 @@ struct SensorStatus {
     uint32_t errorCount = 0;
     bool present = false;
     bool ready = false;
+    /** Why the sensor is not ready, when it is not. */
+    MlxInitStatus initStatus = MLX_INIT_NOT_STARTED;
 };
 
 class ThermalCamera final : public App {

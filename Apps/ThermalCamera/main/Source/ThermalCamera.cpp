@@ -323,6 +323,7 @@ void ThermalCamera::publishStatus(bool present, bool ready) {
     if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) != pdTRUE) return;
     sharedStatus_.present = present;
     sharedStatus_.ready = ready;
+    sharedStatus_.initStatus = sensor_.getInitStatus();
     sharedStatus_.errorCount = sensor_.getErrorCount();
     xSemaphoreGive(mutex_);
 }
@@ -394,11 +395,23 @@ void ThermalCamera::acquisitionLoop() {
             const bool ready = present && sensor_.begin(&bus_, MLX_DEFAULT_ADDRESS);
             publishStatus(present, ready);
             if (!ready) {
-                ESP_LOGW(TAG, "%s", present ? "MLX90640 did not answer correctly" : "No MLX90640 on any I2C bus");
+                if (present) {
+                    ESP_LOGW(TAG, "Sensor at 0x%02X did not initialise: %s",
+                             MLX_DEFAULT_ADDRESS, mlxInitStatusName(sensor_.getInitStatus()));
+                } else {
+                    ESP_LOGW(TAG, "No device answering at 0x%02X on any I2C bus", MLX_DEFAULT_ADDRESS);
+                }
                 interruptibleDelay(1500);
                 continue;
             }
-            ESP_LOGI(TAG, "MLX90640 ready, %u bad pixels", static_cast<unsigned>(sensor_.getCalibration().badPixelCount));
+
+            const MlxCalibration& calibration = sensor_.getCalibration();
+            ESP_LOGI(TAG, "MLX90640 ready: %u bad pixels, kVdd %.0f, gain %.0f, KtPTAT %.2f%s",
+                     static_cast<unsigned>(calibration.badPixelCount),
+                     static_cast<double>(calibration.kVdd),
+                     static_cast<double>(calibration.gainEE),
+                     static_cast<double>(calibration.KtPTAT),
+                     sensor_.hasDeviceSelectMismatch() ? " (unexpected device select bit)" : "");
             reconfigure = true;
             subPagesSeen = 0;
             filterPrimed = false;
@@ -469,6 +482,7 @@ void ThermalCamera::acquisitionLoop() {
             sharedStatus_.supplyVoltage = info.supplyVoltage;
             sharedStatus_.framesPerSecond = framesPerSecond;
             sharedStatus_.errorCount = sensor_.getErrorCount();
+            sharedStatus_.initStatus = MLX_INIT_OK;
             sharedStatus_.present = true;
             sharedStatus_.ready = true;
             sharedStatus_.frameCounter++;

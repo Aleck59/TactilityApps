@@ -50,6 +50,24 @@ enum MlxResolution : uint8_t {
     MLX_RESOLUTION_19BIT = 3
 };
 
+/** Why begin() failed, so the interface can name the real cause. */
+enum MlxInitStatus : uint8_t {
+    MLX_INIT_OK = 0,
+    /** No transport was given. */
+    MLX_INIT_NO_BUS,
+    /** The EEPROM transfer did not complete. */
+    MLX_INIT_READ_FAILED,
+    /** The scratch buffer could not be allocated. */
+    MLX_INIT_OUT_OF_MEMORY,
+    /** The EEPROM was read but its contents are not a usable calibration. */
+    MLX_INIT_BAD_CALIBRATION,
+    /** begin() has not run yet. */
+    MLX_INIT_NOT_STARTED
+};
+
+/** Human readable form of MlxInitStatus. */
+const char* mlxInitStatusName(MlxInitStatus status);
+
 /** Read-out pattern. Chess is the factory default and gives the best image quality. */
 enum MlxPattern : uint8_t {
     MLX_PATTERN_INTERLEAVED = 0,
@@ -129,6 +147,7 @@ public:
     void reset() {
         ready_ = false;
         errorCount_ = 0;
+        initStatus_ = MLX_INIT_NOT_STARTED;
     }
 
     bool setRefreshRate(MlxRefreshRate rate);
@@ -174,10 +193,18 @@ public:
     /** Consecutive failed transfers since the last successful frame. */
     uint32_t getErrorCount() const { return errorCount_; }
 
+    /** Why the last begin() call ended the way it did. */
+    MlxInitStatus getInitStatus() const { return initStatus_; }
+
+    /** True when EE[10] did not look like an MLX90640 device select word. */
+    bool hasDeviceSelectMismatch() const { return deviceSelectMismatch_; }
+
 private:
     MlxBus* bus_ = nullptr;
     uint8_t address_ = MLX_DEFAULT_ADDRESS;
     bool ready_ = false;
+    MlxInitStatus initStatus_ = MLX_INIT_NOT_STARTED;
+    bool deviceSelectMismatch_ = false;
     mutable float lastAmbientTemperature_ = 25.0f;
     uint32_t errorCount_ = 0;
     MlxCalibration calibration_;

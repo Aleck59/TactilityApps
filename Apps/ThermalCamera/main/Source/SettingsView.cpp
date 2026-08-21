@@ -238,7 +238,8 @@ void ThermalCamera::buildSettingsView() {
         info,
         sizeof(info),
         "%s\nI2C address 0x%02X, %d x %d pixels\nBad pixels: %u\nSensor temperature %.1f C, VDD %.2f V",
-        status_.ready ? "MLX90640 connected" : (status_.present ? "Sensor not answering" : "Sensor not found"),
+        status_.ready ? "MLX90640 connected"
+                      : (status_.present ? mlxInitStatusName(status_.initStatus) : "No device at 0x33"),
         MLX_DEFAULT_ADDRESS,
         MLX_WIDTH,
         MLX_HEIGHT,

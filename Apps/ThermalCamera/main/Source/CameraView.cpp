@@ -369,11 +369,16 @@ void ThermalCamera::updateReadouts() {
     const TemperatureUnit unit = settings_.unit;
 
     if (!status_.ready) {
-        const char* message =
-            status_.present ? "MLX90640 found but not responding" : "No MLX90640 found on the I2C bus";
+        // Naming the failure saves guessing between a wiring fault, a bus fault
+        // and a sensor that answers but cannot be calibrated.
+        const char* message = status_.present ? mlxInitStatusName(status_.initStatus)
+                                              : "no device at 0x33 on any I2C bus";
         if (message != lastStatusMessage_) {
             if (spotLabel_ != nullptr) lv_label_set_text(spotLabel_, "--.-");
-            if (statusLabel_ != nullptr) lv_label_set_text(statusLabel_, message);
+            if (statusLabel_ != nullptr) {
+                snprintf(buffer, sizeof(buffer), "MLX90640: %s", message);
+                lv_label_set_text(statusLabel_, buffer);
+            }
             lastStatusMessage_ = message;
         }
         return;

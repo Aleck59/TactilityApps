@@ -36,25 +36,54 @@ inline int pixelPattern(int pixelNumber, bool chess) {
 
 } // namespace
 
+const char* mlxInitStatusName(MlxInitStatus status) {
+    switch (status) {
+        case MLX_INIT_OK:
+            return "ready";
+        case MLX_INIT_NO_BUS:
+            return "no I2C bus";
+        case MLX_INIT_READ_FAILED:
+            return "EEPROM read failed";
+        case MLX_INIT_OUT_OF_MEMORY:
+            return "out of memory";
+        case MLX_INIT_BAD_CALIBRATION:
+            return "calibration rejected";
+        case MLX_INIT_NOT_STARTED:
+        default:
+            return "not started";
+    }
+}
+
 bool Mlx90640::begin(MlxBus* bus, uint8_t address) {
     ready_ = false;
     bus_ = bus;
     address_ = address;
-    if (bus_ == nullptr) return false;
+    if (bus_ == nullptr) {
+        initStatus_ = MLX_INIT_NO_BUS;
+        return false;
+    }
 
     // The EEPROM image is 1664 bytes, too much for the stack, and it is only
     // needed here. malloc rather than new: Tactility's ELF loader resolves
     // operator new(size_t) but not the array or nothrow forms.
     auto* eeData = static_cast<uint16_t*>(malloc(MLX_EEPROM_WORDS * sizeof(uint16_t)));
-    if (eeData == nullptr) return false;
+    if (eeData == nullptr) {
+        initStatus_ = MLX_INIT_OUT_OF_MEMORY;
+        return false;
+    }
 
     bool success = bus_->readWords(EEPROM_START, eeData, MLX_EEPROM_WORDS);
-    if (success) {
-        // Datasheet: EE[10] bit 6 identifies a valid MLX90640 device select word.
-        success = (eeData[10] & 0x0040) != 0;
-    }
-    if (success) {
+    if (!success) {
+        initStatus_ = MLX_INIT_READ_FAILED;
+    } else {
+        // A genuine MLX90640 has the device select bit of EE[10] CLEAR; a set bit
+        // means some other part of the family answered. That alone is not worth
+        // refusing the sensor over, because the calibration checks below are the
+        // stronger evidence - it is only recorded so it can be reported.
+        deviceSelectMismatch_ = (eeData[10] & 0x0040) != 0;
+
         success = extractParameters(eeData);
+        initStatus_ = success ? MLX_INIT_OK : MLX_INIT_BAD_CALIBRATION;
     }
 
     free(eeData);
