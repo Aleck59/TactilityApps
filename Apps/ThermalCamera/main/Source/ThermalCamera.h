@@ -215,6 +215,8 @@ private:
     int colorBarHeight_ = 0;
     /** Width reserved for the bar plus the span labels above and below it. */
     int colorBarColumnWidth_ = 0;
+    /** Gap between the colour bar and the label above and below it. */
+    static constexpr int COLOR_BAR_GAP = 2;
 
     uint32_t lastFrameCounter_ = 0;
     bool haveFrame_ = false;

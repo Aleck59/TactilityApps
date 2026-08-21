@@ -23,6 +23,9 @@ constexpr TickType_t I2C_PROBE_TIMEOUT = pdMS_TO_TICKS(30);
 constexpr int MINIMUM_SCALE = 2;
 constexpr int MAXIMUM_SCALE = 16;
 
+/** Below this the colour bar is too short to read, so it is left out. */
+constexpr int MINIMUM_COLOR_BAR_HEIGHT = 32;
+
 struct SensorSearch {
     uint8_t address;
     Device* found;
@@ -218,7 +221,9 @@ bool ThermalCamera::allocateBuffers() {
 
     // A narrow bar reads just as well, and the column has to be wide enough for
     // the span labels above and below it or they spill over the neighbours.
-    colorBarWidth_ = uiWidth() >= 480 ? 14 : 10;
+    // The width stays a multiple of eight so that two bytes per pixel land on a
+    // row pitch the canvas cannot pad, which would otherwise shear the gradient.
+    colorBarWidth_ = uiWidth() >= 480 ? 16 : 8;
     colorBarColumnWidth_ = colorBarWidth_ + smallTextHeight * 2;
 
     int32_t availableWidth = uiWidth() - pad * 4 - colorBarColumnWidth_;
@@ -248,7 +253,13 @@ bool ThermalCamera::allocateBuffers() {
     while (scale >= MINIMUM_SCALE) {
         imageWidth_ = MLX_WIDTH * scale;
         imageHeight_ = MLX_HEIGHT * scale;
-        colorBarHeight_ = imageHeight_;
+
+        // The bar shares its column with a label above and one below, so the
+        // whole column is only as tall as the image when the bar itself gives
+        // both of them room. Sizing the bar to the image made the column two
+        // lines taller than the image and pushed the labels out of the layout.
+        colorBarHeight_ = imageHeight_ - 2 * (static_cast<int>(smallTextHeight) + COLOR_BAR_GAP);
+        if (colorBarHeight_ < MINIMUM_COLOR_BAR_HEIGHT) colorBarHeight_ = 0;
 
         const size_t imageBytes = static_cast<size_t>(imageWidth_) * static_cast<size_t>(imageHeight_) * 2u;
         const size_t colorBarBytes = static_cast<size_t>(colorBarWidth_) * static_cast<size_t>(colorBarHeight_) * 2u;
@@ -257,19 +268,23 @@ bool ThermalCamera::allocateBuffers() {
         if (imageBuffer_ == nullptr) {
             imageBuffer_ = static_cast<uint16_t*>(heap_caps_malloc(imageBytes, MALLOC_CAP_8BIT));
         }
-        colorBarBuffer_ = static_cast<uint16_t*>(heap_caps_malloc(colorBarBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-        if (colorBarBuffer_ == nullptr) {
-            colorBarBuffer_ = static_cast<uint16_t*>(heap_caps_malloc(colorBarBytes, MALLOC_CAP_8BIT));
+        if (colorBarBytes > 0) {
+            colorBarBuffer_ = static_cast<uint16_t*>(heap_caps_malloc(colorBarBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+            if (colorBarBuffer_ == nullptr) {
+                colorBarBuffer_ = static_cast<uint16_t*>(heap_caps_malloc(colorBarBytes, MALLOC_CAP_8BIT));
+            }
         }
         columnMap_ = static_cast<ColumnMap*>(
             heap_caps_malloc(sizeof(ColumnMap) * static_cast<size_t>(imageWidth_), MALLOC_CAP_8BIT)
         );
 
-        if (imageBuffer_ != nullptr && colorBarBuffer_ != nullptr && columnMap_ != nullptr) {
+        const bool colorBarReady = colorBarBytes == 0 || colorBarBuffer_ != nullptr;
+        if (imageBuffer_ != nullptr && colorBarReady && columnMap_ != nullptr) {
             memset(imageBuffer_, 0, imageBytes);
-            memset(colorBarBuffer_, 0, colorBarBytes);
+            if (colorBarBuffer_ != nullptr) memset(colorBarBuffer_, 0, colorBarBytes);
             columnMapDirty_ = true;
-            ESP_LOGI(TAG, "Image buffer %dx%d (scale %d)", imageWidth_, imageHeight_, scale);
+            ESP_LOGI(TAG, "Image %dx%d (scale %d), colour bar %dx%d",
+                     imageWidth_, imageHeight_, scale, colorBarWidth_, colorBarHeight_);
             return true;
         }
 

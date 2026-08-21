@@ -123,12 +123,12 @@ void ThermalCamera::buildCameraView() {
     }
 
     // --- Colour bar ------------------------------------------------------
-    if (settings_.showColorBar && colorBarBuffer_ != nullptr) {
+    if (settings_.showColorBar && colorBarBuffer_ != nullptr && colorBarHeight_ > 0) {
         // The column is content sized vertically, so its main axis alignment has
         // to stay START; the labels are centred through their own text align.
         lv_obj_t* colorBarGroup = uiCreateGroup(mainRow, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_flex_align(colorBarGroup, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
-        lv_obj_set_style_pad_row(colorBarGroup, 2, 0);
+        lv_obj_set_style_pad_row(colorBarGroup, COLOR_BAR_GAP, 0);
         lv_obj_set_size(colorBarGroup, colorBarColumnWidth_, LV_SIZE_CONTENT);
 
         colorBarHighLabel_ = uiCreateLabel(colorBarGroup, "--", uiSmallFont());
