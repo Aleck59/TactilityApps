@@ -67,9 +67,11 @@ lv_obj_t* ThermalCamera::addSliderSetting(
 
     lv_obj_t* row = uiCreateSettingRow(parent, title);
 
+    // The group is content sized horizontally, so its main axis alignment must
+    // stay START. The row's own SPACE_BETWEEN is what pushes it to the right.
     lv_obj_t* group = uiCreateGroup(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_height(group, LV_SIZE_CONTENT);
-    lv_obj_set_flex_align(group, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(group, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
 
     lv_obj_t* slider = lv_slider_create(group);
     lv_slider_set_range(slider, minimum, maximum);

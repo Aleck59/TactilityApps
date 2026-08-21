@@ -213,6 +213,8 @@ private:
     int imageHeight_ = 0;
     int colorBarWidth_ = 0;
     int colorBarHeight_ = 0;
+    /** Width reserved for the bar plus the span labels above and below it. */
+    int colorBarColumnWidth_ = 0;
 
     uint32_t lastFrameCounter_ = 0;
     bool haveFrame_ = false;

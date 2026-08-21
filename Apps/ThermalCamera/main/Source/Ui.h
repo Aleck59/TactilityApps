@@ -48,7 +48,15 @@ inline int32_t uiButtonHeight() {
     return height < 28 ? 28 : height;
 }
 
-/** A borderless, transparent container that only provides layout. */
+/**
+ * @brief A borderless, transparent container that only provides layout.
+ *
+ * The default flex alignment is START on both axes, and callers should only
+ * move away from that on an axis with a definite size. LVGL derives the offset
+ * for CENTER, END and the SPACE_* alignments from (container size - content
+ * size); on an LV_SIZE_CONTENT axis that difference is negative, so the
+ * children end up positioned outside their own container.
+ */
 inline lv_obj_t* uiCreateGroup(lv_obj_t* parent, lv_flex_flow_t flow) {
     lv_obj_t* group = lv_obj_create(parent);
     // Removing every style also clears the theme's size, which would otherwise
@@ -123,5 +131,8 @@ inline lv_obj_t* uiCreateSettingRow(lv_obj_t* parent, const char* text) {
     lv_obj_t* label = lv_label_create(row);
     lv_label_set_text(label, text);
     lv_obj_set_style_text_font(label, lvgl_get_text_font(uiSmallFont()), 0);
+    // The description absorbs the free space so a long one wraps instead of
+    // pushing the control past the edge of the row.
+    lv_obj_set_flex_grow(label, 1);
     return row;
 }

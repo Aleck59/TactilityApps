@@ -124,12 +124,16 @@ void ThermalCamera::buildCameraView() {
 
     // --- Colour bar ------------------------------------------------------
     if (settings_.showColorBar && colorBarBuffer_ != nullptr) {
+        // The column is content sized vertically, so its main axis alignment has
+        // to stay START; the labels are centred through their own text align.
         lv_obj_t* colorBarGroup = uiCreateGroup(mainRow, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(colorBarGroup, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_flex_align(colorBarGroup, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
         lv_obj_set_style_pad_row(colorBarGroup, 2, 0);
-        lv_obj_set_height(colorBarGroup, LV_SIZE_CONTENT);
+        lv_obj_set_size(colorBarGroup, colorBarColumnWidth_, LV_SIZE_CONTENT);
 
         colorBarHighLabel_ = uiCreateLabel(colorBarGroup, "--", uiSmallFont());
+        lv_obj_set_width(colorBarHighLabel_, colorBarColumnWidth_);
+        lv_obj_set_style_text_align(colorBarHighLabel_, LV_TEXT_ALIGN_CENTER, 0);
         colorBarCanvas_ = lv_canvas_create(colorBarGroup);
         lv_canvas_set_buffer(
             colorBarCanvas_,
@@ -142,6 +146,8 @@ void ThermalCamera::buildCameraView() {
         lv_obj_set_style_border_width(colorBarCanvas_, 1, 0);
         lv_obj_set_style_border_opa(colorBarCanvas_, LV_OPA_50, 0);
         colorBarLowLabel_ = uiCreateLabel(colorBarGroup, "--", uiSmallFont());
+        lv_obj_set_width(colorBarLowLabel_, colorBarColumnWidth_);
+        lv_obj_set_style_text_align(colorBarLowLabel_, LV_TEXT_ALIGN_CENTER, 0);
         updateColorBar();
     }
 
@@ -165,13 +171,29 @@ void ThermalCamera::buildCameraView() {
     lv_obj_t* extremes = uiCreateGroup(info, compact ? LV_FLEX_FLOW_ROW : LV_FLEX_FLOW_COLUMN);
     lv_obj_set_width(extremes, LV_PCT(100));
     lv_obj_set_height(extremes, LV_SIZE_CONTENT);
-    lv_obj_set_flex_align(extremes, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    // Spreading only works along an axis with a definite size. Stacked in a
+    // column the height is content sized, so the rows have to start at the top.
+    lv_obj_set_flex_align(
+        extremes,
+        compact ? LV_FLEX_ALIGN_SPACE_BETWEEN : LV_FLEX_ALIGN_START,
+        LV_FLEX_ALIGN_START,
+        LV_FLEX_ALIGN_START
+    );
+    lv_obj_set_style_pad_row(extremes, uiPad() / 2 + 1, 0);
 
     maximumLabel_ = uiCreateLabel(extremes, "Max --.-", uiFont());
     lv_obj_set_style_text_color(maximumLabel_, lv_color_hex(0xFF6B4A), 0);
     minimumLabel_ = uiCreateLabel(extremes, "Min --.-", uiFont());
     lv_obj_set_style_text_color(minimumLabel_, lv_color_hex(0x5AC8FA), 0);
     averageLabel_ = uiCreateLabel(extremes, "Avg --.-", uiFont());
+
+    if (compact) {
+        // Side by side the three readouts share the width evenly, so a wide
+        // reading shrinks its neighbours rather than overlapping them.
+        lv_obj_set_flex_grow(maximumLabel_, 1);
+        lv_obj_set_flex_grow(minimumLabel_, 1);
+        lv_obj_set_flex_grow(averageLabel_, 1);
+    }
 
     regionLabel_ = uiCreateLabel(info, "", uiSmallFont());
     lv_obj_set_width(regionLabel_, LV_PCT(100));
@@ -448,12 +470,14 @@ void ThermalCamera::updateReadouts() {
         lv_label_set_text(detailLabel_, buffer);
     }
 
+    // The unit already appears in the detail line, so the bar carries bare
+    // numbers and stays inside its narrow column.
     if (colorBarHighLabel_ != nullptr) {
-        formatTemperature(value, sizeof(value), displayRangeMaximum_, unit);
+        snprintf(value, sizeof(value), "%.0f", static_cast<double>(thermalConvertUnit(displayRangeMaximum_, unit)));
         lv_label_set_text(colorBarHighLabel_, value);
     }
     if (colorBarLowLabel_ != nullptr) {
-        formatTemperature(value, sizeof(value), displayRangeMinimum_, unit);
+        snprintf(value, sizeof(value), "%.0f", static_cast<double>(thermalConvertUnit(displayRangeMinimum_, unit)));
         lv_label_set_text(colorBarLowLabel_, value);
     }
 }

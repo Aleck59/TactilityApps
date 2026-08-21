@@ -212,12 +212,16 @@ bool ThermalCamera::allocateBuffers() {
     const int pad = uiPad();
     const bool compact = uiIsCompact();
     const int32_t textHeight = static_cast<int32_t>(lvgl_get_text_font_height(uiFont()));
+    const int32_t smallTextHeight = static_cast<int32_t>(lvgl_get_text_font_height(uiSmallFont()));
     const int32_t toolbarHeight = textHeight * 2 + 8;
     const int32_t controlHeight = uiButtonHeight() + pad * 2;
 
-    colorBarWidth_ = uiWidth() >= 480 ? 24 : 16;
+    // A narrow bar reads just as well, and the column has to be wide enough for
+    // the span labels above and below it or they spill over the neighbours.
+    colorBarWidth_ = uiWidth() >= 480 ? 14 : 10;
+    colorBarColumnWidth_ = colorBarWidth_ + smallTextHeight * 2;
 
-    int32_t availableWidth = uiWidth() - pad * 4 - colorBarWidth_;
+    int32_t availableWidth = uiWidth() - pad * 4 - colorBarColumnWidth_;
     int32_t availableHeight = uiHeight() - toolbarHeight - controlHeight - pad * 4;
 
     if (compact) {
