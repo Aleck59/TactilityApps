@@ -28,7 +28,6 @@ int main(int argc, char* argv[]) {
         }
         switch (event.type) {
             case APP_EVENT_CLOSE:
-                app_manager_finish(app_instance_id);
                 should_close = true;
                 break;
             case APP_EVENT_RESULT:

@@ -55,7 +55,6 @@ int main(int argc, char* argv[]) {
     if (device_get_first_active_by_type(&DISPLAY_TYPE, &display_device) != ERROR_NONE) {
         ESP_LOGE(TAG, "No display device found");
         showErrorAndWait(app_instance_id, "No display device was found.");
-        app_manager_finish(app_instance_id);
         return 0;
     }
 
@@ -64,7 +63,6 @@ int main(int argc, char* argv[]) {
         ESP_LOGE(TAG, "No touch device found");
         device_put(display_device);
         showErrorAndWait(app_instance_id, "No touch device was found.");
-        app_manager_finish(app_instance_id);
         return 0;
     }
 
@@ -96,7 +94,6 @@ int main(int argc, char* argv[]) {
     }
 
     ESP_LOGI(TAG, "Stopping application");
-    app_manager_finish(app_instance_id);
 
     return 0;
 }

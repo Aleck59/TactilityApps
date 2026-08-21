@@ -32,7 +32,6 @@ int main(int argc, char* argv[]) {
         }
         switch (event.type) {
             case APP_EVENT_CLOSE:
-                app_manager_finish(app_instance_id);
                 should_close = true;
                 break;
 
@@ -43,7 +42,6 @@ int main(int argc, char* argv[]) {
                     // PSRAM alert closed - this app cannot run without PSRAM, close self.
                     ctx.psramAlertId_ = 0;
                     app_manager_stop(launch_id);
-                    app_manager_finish(app_instance_id);
                     should_close = true;
                 } else if (launch_id == ctx.tocDialogId_) {
                     ctx.tocDialogId_ = 0;
