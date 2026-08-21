@@ -1,89 +1,154 @@
-# ThermalCamera — Tactility App
+# Thermal Camera
 
-A thermal imager application for the **MLX90640** 32×24 IR sensor, built for the [Tactility OS](https://tactilityproject.org) on ESP32.
+A thermal imaging app for [Tactility](https://tactilityproject.org) built around the
+**MLX90640** 32×24 far-infrared sensor array. It aims at what a handheld thermographic
+camera does: radiometric measurement with emissivity correction, selectable palettes and
+temperature spans, measurement tools, alarm highlighting and snapshot export.
 
 ## Features
 
-| Feature | Detail |
+### Image
+
+- Bilinear upscaling of the 32×24 array to the largest 4:3 image the display fits,
+  with an optional 3×3 pre-filter (`Smooth`) or raw sensor pixels (`Off`).
+- Eight palettes: Iron, Rainbow, Rainbow HC, White hot, Black hot, Arctic, Lava, Amber.
+- Colour bar with live span labels next to the image.
+- Horizontal mirror and vertical flip for any sensor mounting orientation.
+
+### Measurement
+
+- **Spot** — a movable crosshair; tap or drag anywhere on the image to place it.
+- **Spot + Min/Max** — additionally marks the hottest and coldest pixel of the scene.
+- **Box** — a measurement rectangle reported as minimum, average and maximum; tap to
+  re-centre it.
+- Emissivity (0.10 … 1.00), reflected apparent temperature and a constant offset are
+  applied inside the radiometric calculation, not to the displayed number.
+- Scene average and the sensor's own die temperature are always shown.
+- Celsius, Fahrenheit or Kelvin.
+
+### Temperature span
+
+- **Auto** — follows the scene, smoothed so the colours do not jump between frames, with
+  a minimum span so a flat scene stays calm.
+- **Manual** — a locked span. Switching away from auto keeps whatever is on screen at
+  that moment, which is the usual way to compare two objects.
+
+### Alarms
+
+Pixels above a limit, below a limit or inside a band are painted in a solid alarm colour
+on top of the palette, which is how isotherm highlighting works on a real camera.
+
+### Capture
+
+- **Freeze** holds the current image while you read the measurements off it.
+- **Save** writes two files into the app's user data directory:
+  - `<timestamp>.bmp` — the image exactly as displayed, including the markers.
+  - `<timestamp>.csv` — the raw 32×24 temperature array in degrees Celsius, with a
+    header carrying emissivity, reflected and ambient temperature and the scene
+    statistics, so the measurement can be re-analysed on a computer.
+
+  When the system clock has not been set the files are numbered instead of timestamped.
+
+### Sensor control
+
+Refresh rate (0.5 … 16 Hz), read-out pattern (chess or interleaved) and ADC resolution
+(16 … 19 bit) are configurable. Note that a full image needs two sub-pages, so the image
+rate is half the sensor rate: 8 Hz gives 4 full frames per second.
+
+A temporal noise filter averages consecutive frames; the strength is adjustable, and the
+sensor's factory-marked bad pixels are interpolated from their neighbours.
+
+## Hardware
+
+The app scans every I2C controller the device exposes and uses the first bus that has a
+device at address **0x33**, so no configuration is needed. It keeps scanning while
+nothing answers, which means the sensor can be plugged in with the app already running.
+
+### Wiring
+
+| MLX90640 | Signal |
 |---|---|
-| Sensor | MLX90640 (32 × 24 pixels, −40 °C … +300 °C) |
-| Palette | Iron / Rainbow (8-stop gradient) |
-| Frame rate | 2 Hz (configurable in `main.c`) |
-| Display | Auto-scales each pixel to 6 × 6 px → 192 × 144 px canvas |
-| Readouts | Min / Max / Centre-point temperatures |
-| Crosshair | White + on the centre pixel |
+| VIN | 3.3 V |
+| GND | GND |
+| SDA | board I2C data |
+| SCL | board I2C clock |
 
-## Hardware wiring (I2C)
+Most breakout boards (Adafruit, Pimoroni, generic GY-MCU90640) already carry the pull-up
+resistors the bus needs.
 
-```
-MLX90640   →   ESP32
-─────────────────────
-VCC (3.3 V) →  3V3
-GND         →  GND
-SDA         →  board default SDA (GPIO21 on most boards)
-SCL         →  board default SCL (GPIO22 on most boards)
-```
+**Elecrow CrowPanel Basic 7.0** exposes I2C on **GPIO19 (SDA)** and **GPIO20 (SCL)** at
+400 kHz. That bus is shared with the GT911 touch controller at address 0x5D, which does
+not collide with the sensor's 0x33. Check your board's connector silkscreen for where
+those two pins are broken out.
 
-> The sensor I2C address is **0x33** (default, AD0 low).
+A frame is 1664 bytes, so the sensor occupies the bus for a noticeable while. Transfers
+are split into 416-byte chunks to leave gaps for the touch controller.
 
-## Build
+## Measurement accuracy
 
-### Prerequisites
+The MLX90640 is specified at ±1 °C for a black body under laboratory conditions. In
+practice the two settings that matter most are:
 
-1. [ESP-IDF v5.x](https://docs.espressif.com/projects/esp-idf/en/latest/)
-2. [Tactility repository](https://github.com/TactilityProject/Tactility) cloned somewhere.
+- **Emissivity.** The default of 0.95 suits most non-metallic surfaces: paint, plastic,
+  wood, skin, rubber, paper. Bare or polished metal sits far lower (0.05 … 0.3) and will
+  read much colder than it is unless you correct for it or put a piece of matte tape on
+  the spot you want to measure.
+- **Reflected temperature.** A shiny surface also reflects the temperature of its
+  surroundings into the sensor. Set this to the ambient temperature of the room, or to
+  the temperature of whatever large hot object is nearby.
 
-### Steps
+The `Offset` setting is a plain constant added to every pixel. Use it to trim the reading
+against a reference thermometer, not to compensate for a wrong emissivity.
+
+Let the sensor settle for a few minutes after power-up: its own die warms up and the
+readings drift until it reaches equilibrium.
+
+## Building
+
+The app is built with the Tactility build tool from the root of this repository:
 
 ```bash
-# 1. Clone this app alongside TactilityApps (or standalone)
-git clone <this-repo> ThermalCamera
-cd ThermalCamera
+# once, to point at the ESP-IDF installation
+. $IDF_PATH/export.sh
 
-# 2. Point to Tactility SDK
-export TACTILITY_PATH=/path/to/Tactility
-
-# 3. Configure your ESP32 target
-idf.py set-target esp32          # or esp32s3, esp32s2, etc.
-
-# 4. Build & flash
-idf.py build flash monitor
+python tactility.py Apps/ThermalCamera build esp32s3
 ```
 
-### Registering the app in your board config
+Installing straight onto a device on the network:
 
-In your board's `AppList` (e.g. `Boards/CYD-2432S028/Source/BoardConfig.cpp`), add:
-
-```cpp
-#include "thermal_camera/main/Source/main.c"  // or link as idf component
-
-// inside the app list:
-&thermal_camera_app,
+```bash
+python tactility.py Apps/ThermalCamera bir <device-ip> esp32s3
 ```
 
-Or use Tactility's App Hub / SD card install mechanism if you package it as a `.app` bundle.
+Or copy `Apps/ThermalCamera/build/ThermalCamera.app` to the device's SD card.
 
-## File structure
+## Tests
+
+`Tests/` contains host-side tests for the sensor maths, the renderer and the snapshot
+writer. See `Tests/README.md` for how to run them.
+
+## File layout
 
 ```
-ThermalCamera/
-├── CMakeLists.txt            # Top-level IDF project
-├── manifest.properties       # Tactility app metadata
-├── README.md
-└── main/
-    ├── CMakeLists.txt        # IDF component
-    └── Source/
-        ├── mlx90640.h        # Sensor driver (public API)
-        ├── mlx90640.c        # Sensor driver (implementation)
-        └── main.c            # LVGL UI + app lifecycle
+Apps/ThermalCamera/
+├── CMakeLists.txt
+├── manifest.properties
+├── main/
+│   ├── CMakeLists.txt
+│   └── Source/
+│       ├── Mlx90640.{h,cpp}      sensor driver and datasheet calibration maths
+│       ├── ThermalImage.{h,cpp}  statistics, filtering, false-colour rendering
+│       ├── Palette.{h,cpp}       palette generation
+│       ├── Settings.{h,cpp}      settings and their persistence
+│       ├── Snapshot.{h,cpp}      bitmap and CSV export
+│       ├── ThermalCamera.{h,cpp} app lifecycle and the acquisition task
+│       ├── CameraView.cpp        live image, readouts and controls
+│       ├── SettingsView.cpp      settings screen
+│       ├── Ui.h                  layout helpers that scale with the display
+│       └── main.cpp              app registration
+└── Tests/
 ```
 
-## Calibration note
+## Licence
 
-The driver extracts all calibration constants from the sensor's internal EEPROM on first start (`mlx90640_init`).  
-This follows the MLX90640 datasheet (rev 3) calculation steps.  
-For production use you may want to store the `Mlx90640Params` struct in NVS to avoid re-reading EEPROM on every boot.
-
-## License
-
-GPL v3 — same as the rest of TactilityApps.
+GPL v3, like the rest of TactilityApps.
