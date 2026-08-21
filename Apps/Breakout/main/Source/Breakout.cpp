@@ -22,7 +22,7 @@
 constexpr auto* TAG = "Breakout";
 
 /** Must match manifest.properties' app.id */
-static constexpr const char* APP_ID = "one.tactility.breakout";
+static constexpr const char* APP_ID = "tactility.breakout";
 
 static constexpr const char* PREF_HIGH_SCORE = "high";
 static constexpr const char* PREF_SOUND = "sound";

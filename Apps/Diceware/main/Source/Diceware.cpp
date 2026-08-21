@@ -12,7 +12,7 @@
 constexpr char* TAG = "Diceware";
 
 /** Must match manifest.properties' app.id */
-static constexpr const char* APP_ID = "one.tactility.diceware";
+static constexpr const char* APP_ID = "tactility.diceware";
 
 static void skipNewlines(FILE* file, const int count) {
     char c;

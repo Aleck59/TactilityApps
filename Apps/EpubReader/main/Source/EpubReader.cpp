@@ -16,7 +16,7 @@
 static const char* TAG = "EpubReader";
 
 /** Must match manifest.properties' app.id */
-static constexpr const char* APP_ID = "one.tactility.epubreader";
+static constexpr const char* APP_ID = "tactility.epubreader";
 
 // ---------------------------------------------------------------------------
 // Helpers

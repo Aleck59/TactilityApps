@@ -16,7 +16,7 @@ namespace {
 
 constexpr const char* SAVE_FILENAME = "todos.txt";
 /** Must match manifest.properties' app.id */
-constexpr const char* APP_ID = "one.tactility.todolist";
+constexpr const char* APP_ID = "tactility.todolist";
 
 // Attached to each list row / delete button so the click handlers know both which Context and
 // which item index they belong to (mirrors AlertDialog/SelectionDialog's ButtonContext/

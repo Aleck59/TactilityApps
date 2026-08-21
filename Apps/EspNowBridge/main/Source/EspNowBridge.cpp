@@ -32,7 +32,7 @@ static constexpr uint32_t TRANSPORT_WAIT_TIMEOUT_MS = 5000;
 static constexpr uint32_t UPDATE_TASK_STACK_SIZE = 8192;
 
 /** Must match manifest.properties' app.id */
-static constexpr const char* APP_ID = "one.tactility.espnowbridge";
+static constexpr const char* APP_ID = "tactility.espnowbridge";
 
 AutoScanPauseGuard::AutoScanPauseGuard() { wifi_auto_scan_set_paused(true); }
 AutoScanPauseGuard::~AutoScanPauseGuard() { wifi_auto_scan_set_paused(false); }

@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 
 /** Must match manifest.properties' app.id */
-static constexpr const char* APP_ID = "one.tactility.brainfuck";
+static constexpr const char* APP_ID = "tactility.brainfuck";
 
 /* ── Built-in examples ────────────────────────────────────────────── */
 

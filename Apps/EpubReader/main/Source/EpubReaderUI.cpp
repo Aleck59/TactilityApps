@@ -13,7 +13,7 @@
 static const char* TAG = "EpubReader";
 
 /** Must match manifest.properties' app.id */
-static constexpr const char* APP_ID = "one.tactility.epubreader";
+static constexpr const char* APP_ID = "tactility.epubreader";
 
 // Runtime-loaded Noto Serif fonts - 4 variants for the active display size tier.
 // Loaded by loadFonts() on createWidgets, freed by unloadFonts() in epubReaderTeardown().
