@@ -1,18 +1,23 @@
 #include "TestViewBase.h"
 #include "M5UnitTest.h"
 #include "UiScale.h"
-#include <tt_lvgl_toolbar.h>
-#include <tactility/lvgl_fonts.h>
+#include <lvgl/widgets/toolbar.h>
+#include <lvgl/fonts.h>
 
-lv_obj_t* TestViewBase::createToolbar(lv_obj_t* parent, AppHandle handle, const char* title) {
-    lv_obj_t* toolbar = tt_lvgl_toolbar_create_for_app(parent, handle);
-    tt_lvgl_toolbar_set_title(toolbar, title);
-    tt_lvgl_toolbar_add_text_button_action(toolbar, LV_SYMBOL_LEFT, onBackClicked, this);
+static void onBackClicked(lv_event_t* e) {
+    auto* app = static_cast<Context*>(lv_event_get_user_data(e));
+    if (!app) return;
+    m5UnitTestShowList(app);
+}
+
+lv_obj_t* testViewCreateToolbar(lv_obj_t* parent, Context* app, const char* title) {
+    lv_obj_t* toolbar = lvgl_toolbar_create(parent, title);
+    lvgl_toolbar_add_text_button_action(toolbar, LV_SYMBOL_LEFT, onBackClicked, app);
     return toolbar;
 }
 
-void TestViewBase::createBanner(lv_obj_t* parent, const char* unitName,
-                                const char* ifaceBadge, lv_color_t accentColor) {
+void testViewCreateBanner(lv_obj_t* parent, const char* unitName,
+                          const char* ifaceBadge, lv_color_t accentColor) {
     lv_coord_t bannerH = uiH() < 200 ? 16 : 22;
 
     lv_obj_t* banner = lv_obj_create(parent);
@@ -54,14 +59,4 @@ void TestViewBase::createBanner(lv_obj_t* parent, const char* unitName,
     lv_obj_set_style_text_color(badgeLabel, lv_color_white(), 0);
     lv_obj_set_style_text_font(badgeLabel, lvgl_get_text_font(FONT_SIZE_SMALL), 0);
     lv_obj_center(badgeLabel);
-}
-
-void TestViewBase::onBackClicked(lv_event_t* e) {
-    auto* self = static_cast<TestViewBase*>(lv_event_get_user_data(e));
-    if (!self || !self->app_) return;
-    self->onStop();
-    M5UnitTest* app = self->app_;
-    app->clearActiveTestView();
-    delete self;
-    app->showList();
 }

@@ -1,14 +1,23 @@
 import json
+import subprocess
 import tarfile
 import os
 import tempfile
-import configparser
 import sys
+from datetime import datetime, UTC
 
 def read_properties_file(path):
-    config = configparser.RawConfigParser()
-    config.read(path)
-    return config
+    properties = {}
+    with open(path, "r") as file:
+        for line in file:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            key, sep, value = line.partition("=")
+            if not sep:
+                continue
+            properties[key.strip()] = value.strip()
+    return properties
 
 def get_manifest(appPath):
     """Extract only the file named 'manifest.properties' from the given tar/tar.gz
@@ -62,51 +71,49 @@ def get_manifest(appPath):
     return None
 
 def get_versioned_file_name(manifest):
-    app_id = manifest["app"]["id"]
-    version_code = manifest["app"]["versionCode"]
+    app_id = manifest["app.id"]
+    version_code = manifest["app.version.code"]
     return f"{app_id}-{version_code}.app"
 
 def get_os_version(manifest):
-    sdk = manifest["target"]["sdk"]
+    sdk = manifest["target.sdk"]
     # Remove trailing hyphen suffix if present
     if "-" in sdk:
         return sdk.rsplit("-", 1)[0].strip()
     else:
         return sdk
 
-def manifest_config_to_flat_json(manifest):
-    """Convert a ConfigParser manifest into a flat JSON-like dict.
+def check_and_get_sdk_version(manifest_map):
+    """Ensure all apps target the same (simplified) SDK version and return it."""
+    versions = {get_os_version(manifest) for manifest in manifest_map.values()}
+    if len(versions) != 1:
+        print(f"ERROR: Apps target multiple SDK versions: {sorted(versions)}. All apps must target the same SDK version.")
+        sys.exit(1)
+    return next(iter(versions))
 
-    Expected sections/keys (case-insensitive for keys):
-    - [app]
-        id -> appId
-        versionName -> appVersionName
-        versionCode -> appVersionCode (int)
-        name -> appName
-        description -> appDescription (optional; default "")
-    - [target]
-        sdk -> targetSdk
-        platforms -> targetPlatforms (comma-separated list)
+def get_git_commit_hash():
+    return subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+
+def manifest_config_to_flat_json(manifest):
+    """Convert a flat (V2) manifest dict into a flat JSON-like dict.
+
+    Expected keys:
+        app.id -> appId
+        app.version.name -> appVersionName
+        app.version.code -> appVersionCode (int)
+        app.name -> appName
+        app.description -> appDescription (optional; default "")
+        target.sdk -> targetSdk
+        target.platforms -> targetPlatforms (comma-separated list)
 
     Unknown/missing values fall back to sensible defaults per requirements.
     """
-    def get_opt(section, option, default=None):
-        if not manifest.has_section(section):
-            return default
-        # try exact option then lowercase (RawConfigParser lowercases by default)
-        if manifest.has_option(section, option):
-            return manifest.get(section, option)
-        low = option.lower()
-        if manifest.has_option(section, low):
-            return manifest.get(section, low)
-        return default
-
     # Map values
-    app_id = get_opt("app", "id", "")
-    app_version_name = get_opt("app", "versionName", "")
-    app_version_code_raw = get_opt("app", "versionCode", "0")
-    app_name = get_opt("app", "name", "")
-    app_description = get_opt("app", "description", "") or ""
+    app_id = manifest.get("app.id", "")
+    app_version_name = manifest.get("app.version.name", "")
+    app_version_code_raw = manifest.get("app.version.code", "0")
+    app_name = manifest.get("app.name", "")
+    app_description = manifest.get("app.description", "") or ""
 
     # Coerce version code to int safely
     try:
@@ -114,8 +121,8 @@ def manifest_config_to_flat_json(manifest):
     except Exception:
         app_version_code = 0
 
-    target_sdk = get_opt("target", "sdk", "")
-    platforms_raw = get_opt("target", "platforms", "")
+    target_sdk = manifest.get("target.sdk", "")
+    platforms_raw = manifest.get("target.platforms", "")
     target_platforms = [p.strip() for p in str(platforms_raw).split(",") if p.strip()] if platforms_raw is not None else []
 
     filename = get_versioned_file_name(manifest)
@@ -142,15 +149,23 @@ if __name__ == "__main__":
         sys.exit()
     app_directory = sys.argv[1]
     manifest_map = {}
-    output_json = {
-        "apps": []
-    }
     any_manifest = None
     if os.path.exists(app_directory):
         for file in os.listdir(app_directory):
             if file.endswith(".app"):
                 file_path = os.path.join(app_directory, file)
                 manifest_map[file_path] = get_manifest(file_path)
+    # All bundled apps must target the same SDK version; this becomes the CDN path segment
+    sdk_version = check_and_get_sdk_version(manifest_map)
+    with open("sdk_version.txt", "w") as f:
+        f.write(sdk_version)
+    print(f"SDK version: {sdk_version}")
+    output_json = {
+        "sdkVersion": sdk_version,
+        "created": datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "gitCommit": get_git_commit_hash(),
+        "apps": []
+    }
     # Rename files and collect manifest data into output json object
     for file_path in manifest_map.keys():
         print(f"Processing {file_path}: {manifest_map[file_path]}")

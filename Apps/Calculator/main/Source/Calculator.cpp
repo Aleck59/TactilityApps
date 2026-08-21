@@ -1,105 +1,109 @@
 #include "Calculator.h"
 
+#include <lvgl/widgets/toolbar.h>
+
 #include <cstdio>
-#include <ctype.h>
-#include <tt_lvgl_toolbar.h>
-#include <stack>
 #include <cstring>
+#include <ctype.h>
+#include <deque>
+#include <stack>
+#include <string>
 
 constexpr auto* TAG = "Calculator";
 
 static int precedence(char op) {
     if (op == '+' || op == '-') return 1;
     if (op == '*' || op == '/') return 2;
+    if (op == '~') return 3; // unary minus marker, binds tighter than * and /
     return 0;
 }
 
-void Calculator::button_event_cb(lv_event_t* e) {
-    Calculator* self = static_cast<Calculator*>(lv_event_get_user_data(e));
-    lv_obj_t* buttonmatrix = lv_event_get_current_target_obj(e);
-    lv_event_code_t event_code = lv_event_get_code(e);
-    uint32_t button_id = lv_buttonmatrix_get_selected_button(buttonmatrix);
-    const char* button_text = lv_buttonmatrix_get_button_text(buttonmatrix, button_id);
-    if (event_code == LV_EVENT_VALUE_CHANGED) {
-        self->handleInput(button_text);
-    }
-}
-
-void Calculator::handleInput(const char* txt) {
-    if (strcmp(txt, "C") == 0) {
-        resetCalculator();
-        return;
-    }
-
-    if (strcmp(txt, "=") == 0) {
-        evaluateExpression();
-        return;
-    }
-
-    if (strlen(formulaBuffer) + strlen(txt) < sizeof(formulaBuffer) - 1) {
-        if (newInput) {
-            memset(formulaBuffer, 0, sizeof(formulaBuffer));
-            newInput = false;
-        }
-        strcat(formulaBuffer, txt);
-        lv_label_set_text(displayLabel, formulaBuffer);
-    }
-}
-
-std::deque<std::string> Calculator::infixToRPN(const std::string& infix) {
+static bool infixToRPN(const std::string& infix, std::deque<std::string>& output) {
     std::stack<char> opStack;
-    std::deque<std::string> output;
+    output.clear();
     std::string token;
     size_t i = 0;
+    bool expectOperand = true; // true at start, after '(', or after a binary/unary operator
 
     while (i < infix.length()) {
         char ch = infix[i];
 
-        if (isdigit(ch)) {
+        if (isdigit((unsigned char)ch) || ch == '.') {
             token.clear();
-            while (i < infix.length() && (isdigit(infix[i]) || infix[i] == '.')) { token += infix[i++]; }
+            bool hasDecimalPoint = false;
+            while (i < infix.length()) {
+                char current = infix[i];
+                if (isdigit((unsigned char)current)) {
+                    token += current;
+                } else if (current == '.' && !hasDecimalPoint) {
+                    hasDecimalPoint = true;
+                    token += current;
+                } else {
+                    break;
+                }
+                ++i;
+            }
+            if (i < infix.length() && infix[i] == '.') return false;
+            if (token.find_first_of("0123456789") == std::string::npos) return false; // no digits, e.g. "."
             output.push_back(token);
+            expectOperand = false;
             continue;
         }
 
-        if (ch == '(') { opStack.push(ch); } else if (ch == ')') {
+        if (ch == '(') {
+            opStack.push(ch);
+            expectOperand = true;
+        } else if (ch == ')') {
             while (!opStack.empty() && opStack.top() != '(') {
                 output.push_back(std::string(1, opStack.top()));
                 opStack.pop();
             }
-            opStack.pop();
+            if (opStack.empty()) return false; // unmatched ')'
+            opStack.pop(); // remove matching '('
+            expectOperand = false;
+        } else if (ch == '-' && expectOperand) {
+            // unary minus: push a marker that binds only to the next operand
+            opStack.push('~');
+            expectOperand = true;
         } else if (strchr("+-*/", ch)) {
             while (!opStack.empty() && precedence(opStack.top()) >= precedence(ch)) {
                 output.push_back(std::string(1, opStack.top()));
                 opStack.pop();
             }
             opStack.push(ch);
+            expectOperand = true;
         }
 
         i++;
     }
 
     while (!opStack.empty()) {
+        if (opStack.top() == '(') return false; // unmatched '('
         output.push_back(std::string(1, opStack.top()));
         opStack.pop();
     }
 
-    return output;
+    return true;
 }
 
-double Calculator::evaluateRPN(std::deque<std::string> rpnQueue) {
+static bool evaluateRPN(std::deque<std::string> rpnQueue, double& result) {
     std::stack<double> values;
 
     while (!rpnQueue.empty()) {
         std::string token = rpnQueue.front();
         rpnQueue.pop_front();
 
-        if (isdigit(token[0])) {
+        if (isdigit((unsigned char)token[0]) || token[0] == '.') {
             double d;
             sscanf(token.c_str(), "%lf", &d);
             values.push(d);
+        } else if (token[0] == '~') {
+            if (values.empty()) return false;
+            double a = values.top();
+            values.pop();
+            values.push(-a);
         } else if (strchr("+-*/", token[0])) {
-            if (values.size() < 2) return 0;
+            if (values.size() < 2) return false;
 
             double b = values.top();
             values.pop();
@@ -109,46 +113,104 @@ double Calculator::evaluateRPN(std::deque<std::string> rpnQueue) {
             if (token[0] == '+') values.push(a + b);
             else if (token[0] == '-') values.push(a - b);
             else if (token[0] == '*') values.push(a * b);
-            else if (token[0] == '/' && b != 0) values.push(a / b);
+            else if (token[0] == '/') {
+                if (b == 0) return false;
+                values.push(a / b);
+            }
         }
     }
 
-    return values.empty() ? 0 : values.top();
-}
-void Calculator::evaluateExpression() {
-    double result = computeFormula();
-
-    size_t formulaLen = strlen(formulaBuffer);
-    size_t maxAvailable = sizeof(formulaBuffer) - formulaLen - 1;
-
-    if (maxAvailable > 10) {
-        char resultBuffer[32];
-        snprintf(resultBuffer, sizeof(resultBuffer), " = %.8g", result);
-        strncat(formulaBuffer, resultBuffer, maxAvailable);
-    } else { snprintf(formulaBuffer, sizeof(formulaBuffer), "%.8g", result); }
-
-    lv_label_set_text(displayLabel, "0");
-    lv_label_set_text(resultLabel, formulaBuffer);
-    newInput = true;
+    if (values.size() != 1) return false;
+    result = values.top();
+    return true;
 }
 
-double Calculator::computeFormula() {
-    return evaluateRPN(infixToRPN(std::string(formulaBuffer)));
+static bool computeFormula(Context* ctx, double& result) {
+    std::deque<std::string> rpn;
+    if (!infixToRPN(std::string(ctx->formulaBuffer), rpn) || rpn.empty()) return false;
+    return evaluateRPN(std::move(rpn), result);
 }
 
-void Calculator::resetCalculator() {
-    memset(formulaBuffer, 0, sizeof(formulaBuffer));
-    lv_label_set_text(displayLabel, "0");
-    lv_label_set_text(resultLabel, "");
-    newInput = true;
+static void resetCalculator(Context* ctx) {
+    memset(ctx->formulaBuffer, 0, sizeof(ctx->formulaBuffer));
+    lv_label_set_text(ctx->displayLabel, "0");
+    lv_label_set_text(ctx->resultLabel, "");
+    ctx->newInput = true;
+    ctx->hasLastResult = false;
 }
 
-void Calculator::onShow(AppHandle appHandle, lv_obj_t* parent) {
+static void evaluateExpression(Context* ctx) {
+    double result;
+    if (!computeFormula(ctx, result)) {
+        lv_label_set_text(ctx->displayLabel, "Error");
+        lv_label_set_text(ctx->resultLabel, ctx->formulaBuffer);
+        ctx->newInput = true;
+        return;
+    }
+
+    char equationBuffer[192];
+    snprintf(equationBuffer, sizeof(equationBuffer), "%s = %.8g", ctx->formulaBuffer, result);
+
+    snprintf(ctx->formulaBuffer, sizeof(ctx->formulaBuffer), "%.8g", result);
+    snprintf(ctx->lastResult, sizeof(ctx->lastResult), "%.8g", result);
+    ctx->hasLastResult = true;
+
+    lv_label_set_text(ctx->displayLabel, "0");
+    lv_label_set_text(ctx->resultLabel, equationBuffer);
+    ctx->newInput = true;
+}
+
+static void handleInput(Context* ctx, const char* txt) {
+    if (strcmp(txt, "C") == 0) {
+        resetCalculator(ctx);
+        return;
+    }
+
+    if (strcmp(txt, "=") == 0) {
+        evaluateExpression(ctx);
+        return;
+    }
+
+    char resToken[sizeof(ctx->lastResult) + 2];
+    if (strcmp(txt, "RES") == 0) {
+        if (!ctx->hasLastResult) return;
+        if (ctx->lastResult[0] == '-') {
+            snprintf(resToken, sizeof(resToken), "(%s)", ctx->lastResult);
+        } else {
+            snprintf(resToken, sizeof(resToken), "%s", ctx->lastResult);
+        }
+        txt = resToken;
+    }
+
+    if (strlen(ctx->formulaBuffer) + strlen(txt) < sizeof(ctx->formulaBuffer) - 1) {
+        if (ctx->newInput) {
+            memset(ctx->formulaBuffer, 0, sizeof(ctx->formulaBuffer));
+            ctx->newInput = false;
+        }
+        strcat(ctx->formulaBuffer, txt);
+        lv_label_set_text(ctx->displayLabel, ctx->formulaBuffer);
+    }
+}
+
+static void onButtonPressed(lv_event_t* e) {
+    auto* ctx = static_cast<Context*>(lv_event_get_user_data(e));
+    lv_obj_t* buttonmatrix = lv_event_get_current_target_obj(e);
+    lv_event_code_t event_code = lv_event_get_code(e);
+    uint32_t button_id = lv_buttonmatrix_get_selected_button(buttonmatrix);
+    const char* button_text = lv_buttonmatrix_get_button_text(buttonmatrix, button_id);
+    if (event_code == LV_EVENT_VALUE_CHANGED) {
+        handleInput(ctx, button_text);
+    }
+}
+
+void calculatorCreateWidgets(lv_obj_t* parent, void* userData) {
+    auto* ctx = static_cast<Context*>(userData);
+
     lv_obj_remove_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(parent, 0, LV_STATE_DEFAULT);
 
-    lv_obj_t* toolbar = tt_lvgl_toolbar_create_for_app(parent, appHandle);
+    lv_obj_t* toolbar = lvgl_toolbar_create(parent, "Calculator");
     lv_obj_align(toolbar, LV_ALIGN_TOP_MID, 0, 0);
 
     lv_obj_t* wrapper = lv_obj_create(parent);
@@ -165,22 +227,22 @@ void Calculator::onShow(AppHandle appHandle, lv_obj_t* parent) {
     lv_obj_set_style_border_width(wrapper, 0, 0);
     lv_obj_remove_flag(wrapper, LV_OBJ_FLAG_SCROLLABLE);
 
-    displayLabel = lv_label_create(wrapper);
-    lv_label_set_text(displayLabel, "0");
-    lv_obj_set_width(displayLabel, LV_SIZE_CONTENT);
-    lv_obj_set_align(displayLabel, LV_ALIGN_LEFT_MID);
+    ctx->displayLabel = lv_label_create(wrapper);
+    lv_label_set_text(ctx->displayLabel, "0");
+    lv_obj_set_width(ctx->displayLabel, LV_SIZE_CONTENT);
+    lv_obj_set_align(ctx->displayLabel, LV_ALIGN_LEFT_MID);
 
-    resultLabel = lv_label_create(wrapper);
-    lv_label_set_text(resultLabel, "");
-    lv_obj_set_width(resultLabel, LV_SIZE_CONTENT);
-    lv_obj_set_align(resultLabel, LV_ALIGN_RIGHT_MID);
+    ctx->resultLabel = lv_label_create(wrapper);
+    lv_label_set_text(ctx->resultLabel, "");
+    lv_obj_set_width(ctx->resultLabel, LV_SIZE_CONTENT);
+    lv_obj_set_align(ctx->resultLabel, LV_ALIGN_RIGHT_MID);
 
     static const char* btn_map[] = {
         "(", ")", "C", "/", "\n",
         "7", "8", "9", "*", "\n",
         "4", "5", "6", "-", "\n",
         "1", "2", "3", "+", "\n",
-        "0", "=", "", "", ""
+        "0", ".", "RES", "=", ""
     };
 
     lv_obj_t* buttonmatrix = lv_buttonmatrix_create(parent);
@@ -201,5 +263,5 @@ void Calculator::onShow(AppHandle appHandle, lv_obj_t* parent) {
     }
     lv_obj_align(buttonmatrix, LV_ALIGN_BOTTOM_MID, 0, -5);
 
-    lv_obj_add_event_cb(buttonmatrix, button_event_cb, LV_EVENT_VALUE_CHANGED, this);
+    lv_obj_add_event_cb(buttonmatrix, onButtonPressed, LV_EVENT_VALUE_CHANGED, ctx);
 }
