@@ -1,4 +1,5 @@
 #include "ThermalCamera.h"
+
 #include <TactilityCpp/App.h>
 
 extern "C" {
