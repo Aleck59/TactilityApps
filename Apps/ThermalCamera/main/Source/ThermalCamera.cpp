@@ -3,7 +3,6 @@
 #include "Ui.h"
 
 #include <cstring>
-#include <new>
 
 #include <esp_heap_caps.h>
 #include <esp_log.h>
@@ -98,7 +97,6 @@ void ThermalCamera::onCreate(AppHandle app) {
     displayRangeMaximum_ = settings_.manualRangeMaximum;
 
     mutex_ = xSemaphoreCreateMutex();
-    sensor_ = new (std::nothrow) Mlx90640();
 
     sharedFrame_ = static_cast<float*>(heap_caps_calloc(MLX_PIXELS, sizeof(float), MALLOC_CAP_8BIT));
     workFrame_ = static_cast<float*>(heap_caps_calloc(MLX_PIXELS, sizeof(float), MALLOC_CAP_8BIT));
@@ -108,7 +106,7 @@ void ThermalCamera::onCreate(AppHandle app) {
     // The I2C driver reads into this buffer, so keep it in internal memory.
     rawWords_ = static_cast<uint16_t*>(heap_caps_calloc(MLX_FRAME_WORDS, sizeof(uint16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 
-    if (sensor_ == nullptr || sharedFrame_ == nullptr || workFrame_ == nullptr || filterFrame_ == nullptr ||
+    if (sharedFrame_ == nullptr || workFrame_ == nullptr || filterFrame_ == nullptr ||
         scratchFrame_ == nullptr || displayFrame_ == nullptr || rawWords_ == nullptr) {
         ESP_LOGE(TAG, "Out of memory during startup");
         return;
@@ -121,9 +119,6 @@ void ThermalCamera::onCreate(AppHandle app) {
 void ThermalCamera::onDestroy(AppHandle app) {
     stopAcquisition();
     settingsSave(settings_);
-
-    delete sensor_;
-    sensor_ = nullptr;
 
     freeBuffers();
 
@@ -328,7 +323,7 @@ void ThermalCamera::publishStatus(bool present, bool ready) {
     if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) != pdTRUE) return;
     sharedStatus_.present = present;
     sharedStatus_.ready = ready;
-    if (sensor_ != nullptr) sharedStatus_.errorCount = sensor_->getErrorCount();
+    sharedStatus_.errorCount = sensor_.getErrorCount();
     xSemaphoreGive(mutex_);
 }
 
@@ -353,7 +348,7 @@ void ThermalCamera::acquisitionTrampoline(void* context) {
 }
 
 void ThermalCamera::startAcquisition() {
-    if (task_ != nullptr || sensor_ == nullptr) return;
+    if (task_ != nullptr) return;
     taskRunning_ = true;
     taskFinished_ = false;
     reconfigureRequested_ = true;
@@ -394,16 +389,16 @@ void ThermalCamera::acquisitionLoop() {
             continue;
         }
 
-        if (!sensor_->isReady()) {
+        if (!sensor_.isReady()) {
             const bool present = findSensor();
-            const bool ready = present && sensor_->begin(&bus_, MLX_DEFAULT_ADDRESS);
+            const bool ready = present && sensor_.begin(&bus_, MLX_DEFAULT_ADDRESS);
             publishStatus(present, ready);
             if (!ready) {
                 ESP_LOGW(TAG, "%s", present ? "MLX90640 did not answer correctly" : "No MLX90640 on any I2C bus");
                 interruptibleDelay(1500);
                 continue;
             }
-            ESP_LOGI(TAG, "MLX90640 ready, %u bad pixels", static_cast<unsigned>(sensor_->getCalibration().badPixelCount));
+            ESP_LOGI(TAG, "MLX90640 ready, %u bad pixels", static_cast<unsigned>(sensor_.getCalibration().badPixelCount));
             reconfigure = true;
             subPagesSeen = 0;
             filterPrimed = false;
@@ -411,18 +406,18 @@ void ThermalCamera::acquisitionLoop() {
         }
 
         if (reconfigure) {
-            sensor_->setResolution(local.resolution);
-            sensor_->setPattern(local.pattern);
-            sensor_->setRefreshRate(local.refreshRate);
+            sensor_.setResolution(local.resolution);
+            sensor_.setPattern(local.pattern);
+            sensor_.setRefreshRate(local.refreshRate);
             subPagesSeen = 0;
             filterPrimed = false;
         }
 
-        if (!sensor_->readRawFrame(rawWords_)) {
-            if (sensor_->getErrorCount() > 8) {
+        if (!sensor_.readRawFrame(rawWords_)) {
+            if (sensor_.getErrorCount() > 8) {
                 ESP_LOGW(TAG, "Lost contact with the sensor, rescanning");
                 publishStatus(false, false);
-                sensor_->reset(); // forces a fresh begin() on the next pass
+                sensor_.reset(); // forces a fresh begin() on the next pass
                 interruptibleDelay(500);
                 continue;
             }
@@ -435,7 +430,7 @@ void ThermalCamera::acquisitionLoop() {
         }
 
         MlxFrameInfo info;
-        sensor_->calculateTemperatures(
+        sensor_.calculateTemperatures(
             rawWords_,
             local.emissivity,
             local.reflectedTemperature,
@@ -445,7 +440,7 @@ void ThermalCamera::acquisitionLoop() {
         subPagesSeen = static_cast<uint8_t>(subPagesSeen | (1u << info.subPage));
         if (subPagesSeen != 0x03) continue; // the other half of the image is still missing
 
-        sensor_->repairBadPixels(workFrame_);
+        sensor_.repairBadPixels(workFrame_);
         if (local.temperatureOffset != 0.0f) {
             for (int i = 0; i < MLX_PIXELS; i++) workFrame_[i] += local.temperatureOffset;
         }
@@ -473,7 +468,7 @@ void ThermalCamera::acquisitionLoop() {
             sharedStatus_.ambientTemperature = info.ambientTemperature;
             sharedStatus_.supplyVoltage = info.supplyVoltage;
             sharedStatus_.framesPerSecond = framesPerSecond;
-            sharedStatus_.errorCount = sensor_->getErrorCount();
+            sharedStatus_.errorCount = sensor_.getErrorCount();
             sharedStatus_.present = true;
             sharedStatus_.ready = true;
             sharedStatus_.frameCounter++;

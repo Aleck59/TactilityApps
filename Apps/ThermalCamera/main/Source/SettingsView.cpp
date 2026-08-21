@@ -233,7 +233,7 @@ void ThermalCamera::buildSettingsView() {
     addDropdownSetting(list, "ADC resolution", RESOLUTION_OPTIONS, settings_.resolution, SETTING_RESOLUTION);
 
     char info[192];
-    const unsigned badPixels = sensor_ != nullptr ? sensor_->getCalibration().badPixelCount : 0u;
+    const unsigned badPixels = sensor_.getCalibration().badPixelCount;
     snprintf(
         info,
         sizeof(info),

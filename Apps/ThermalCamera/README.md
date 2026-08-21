@@ -127,6 +127,19 @@ Or copy `Apps/ThermalCamera/build/ThermalCamera.app` to the device's SD card.
 `Tests/` contains host-side tests for the sensor maths, the renderer and the snapshot
 writer. See `Tests/README.md` for how to run them.
 
+## A note on symbols
+
+An app is loaded as a relocatable ELF, and every call it makes into the firmware is
+resolved at load time against a fixed symbol table. A symbol that is not in that table
+builds fine — the ELF is linked with `-shared`, so unresolved symbols are allowed — and
+then fails at startup with *"Application failed to start: missing symbol"*.
+
+The C++ runtime is only partially exported: `operator new(size_t)` and the sized
+`operator delete` are, but the `nothrow` forms and the array forms are not. This app
+therefore uses `malloc`/`free` for its scratch buffers and holds the sensor by value.
+The device log names the symbol that could not be resolved (`Can't find symbol ...`),
+which is the quickest way to diagnose this class of failure.
+
 ## File layout
 
 ```

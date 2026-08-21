@@ -1,9 +1,9 @@
 #include "Snapshot.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <new>
 
 namespace {
 
@@ -74,13 +74,13 @@ bool snapshotWriteBmp(const char* path, const uint16_t* pixels, int width, int h
     writeLittleEndian32(header + 38, 2835); // 72 DPI in pixels per metre
     writeLittleEndian32(header + 42, 2835);
 
-    auto* row = new (std::nothrow) uint8_t[paddedRowBytes];
+    // malloc rather than new[]: the ELF loader does not resolve operator new[].
+    auto* row = static_cast<uint8_t*>(calloc(1, static_cast<size_t>(paddedRowBytes)));
     if (row == nullptr) return false;
-    memset(row, 0, paddedRowBytes);
 
     FILE* file = fopen(path, "wb");
     if (file == nullptr) {
-        delete[] row;
+        free(row);
         return false;
     }
 
@@ -103,7 +103,7 @@ bool snapshotWriteBmp(const char* path, const uint16_t* pixels, int width, int h
     }
 
     if (fclose(file) != 0) success = false;
-    delete[] row;
+    free(row);
     return success;
 }
 

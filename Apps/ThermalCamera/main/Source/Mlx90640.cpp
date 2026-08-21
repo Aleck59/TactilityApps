@@ -1,8 +1,8 @@
 #include "Mlx90640.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
-#include <new>
 
 namespace {
 
@@ -42,9 +42,10 @@ bool Mlx90640::begin(MlxBus* bus, uint8_t address) {
     address_ = address;
     if (bus_ == nullptr) return false;
 
-    // The EEPROM image is 1664 bytes; it is only read once so a stack buffer is
-    // not an option - use a heap allocation that is released before we return.
-    auto* eeData = new (std::nothrow) uint16_t[MLX_EEPROM_WORDS];
+    // The EEPROM image is 1664 bytes, too much for the stack, and it is only
+    // needed here. malloc rather than new: Tactility's ELF loader resolves
+    // operator new(size_t) but not the array or nothrow forms.
+    auto* eeData = static_cast<uint16_t*>(malloc(MLX_EEPROM_WORDS * sizeof(uint16_t)));
     if (eeData == nullptr) return false;
 
     bool success = bus_->readWords(EEPROM_START, eeData, MLX_EEPROM_WORDS);
@@ -56,7 +57,7 @@ bool Mlx90640::begin(MlxBus* bus, uint8_t address) {
         success = extractParameters(eeData);
     }
 
-    delete[] eeData;
+    free(eeData);
     ready_ = success;
     return success;
 }

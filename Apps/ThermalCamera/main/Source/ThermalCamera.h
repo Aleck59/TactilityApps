@@ -178,7 +178,9 @@ private:
 
     Device* i2cDevice_ = nullptr;
     TactilityI2cBus bus_;
-    Mlx90640* sensor_ = nullptr;
+    /** Held by value: its calibration is about 9 kB, and heap allocating it
+     *  would need operator new forms the ELF loader cannot resolve. */
+    Mlx90640 sensor_;
 
     SemaphoreHandle_t mutex_ = nullptr;
     TaskHandle_t task_ = nullptr;
