@@ -10,8 +10,9 @@
 #include <cstring>
 #include <sys/stat.h>
 
+#include <app/paths.h>
 #include <esp_log.h>
-#include <tt_lvgl_toolbar.h>
+#include <lvgl/widgets/toolbar.h>
 
 namespace {
 
@@ -52,12 +53,18 @@ void formatTemperature(char* buffer, size_t size, float celsius, TemperatureUnit
 // View construction
 // ---------------------------------------------------------------------------
 
-void ThermalCamera::clearContent() {
+void ThermalCamera::resetView() {
     if (uiTimer_ != nullptr) {
         lv_timer_delete(uiTimer_);
         uiTimer_ = nullptr;
     }
-    if (content_ != nullptr) lv_obj_clean(content_);
+    // The toolbar is rebuilt along with the view: its navigation button differs
+    // per screen, and the default one set by the firmware cannot be restored
+    // once it has been replaced.
+    if (toolbar_ != nullptr) lv_obj_delete(toolbar_);
+    if (content_ != nullptr) lv_obj_delete(content_);
+    toolbar_ = nullptr;
+    content_ = nullptr;
 
     imageCanvas_ = nullptr;
     colorBarCanvas_ = nullptr;
@@ -79,25 +86,17 @@ void ThermalCamera::clearContent() {
     bindingCount_ = 0;
 }
 
-void ThermalCamera::refreshToolbar() {
-    if (toolbar_ == nullptr) return;
-    tt_lvgl_toolbar_clear_actions(toolbar_);
-
-    if (showingSettings_) {
-        tt_lvgl_toolbar_set_title(toolbar_, "Settings");
-        tt_lvgl_toolbar_add_text_button_action(toolbar_, LV_SYMBOL_LEFT, onBackButton, this);
-    } else {
-        tt_lvgl_toolbar_set_title(toolbar_, "Thermal Camera");
-        tt_lvgl_toolbar_add_text_button_action(toolbar_, LV_SYMBOL_SAVE, onSaveButton, this);
-        tt_lvgl_toolbar_add_text_button_action(toolbar_, LV_SYMBOL_SETTINGS, onSettingsButton, this);
-    }
-}
-
 void ThermalCamera::buildCameraView() {
-    if (content_ == nullptr) return;
-    clearContent();
+    if (root_ == nullptr) return;
+    resetView();
     showingSettings_ = false;
-    refreshToolbar();
+
+    // The firmware gives every toolbar a navigation button that closes the app,
+    // which is what this screen wants, so it is left alone here.
+    toolbar_ = lvgl_toolbar_create(root_, "Thermal Camera");
+    lvgl_toolbar_add_text_button_action(toolbar_, LV_SYMBOL_SAVE, onSaveButton, this);
+    lvgl_toolbar_add_text_button_action(toolbar_, LV_SYMBOL_SETTINGS, onSettingsButton, this);
+    createContentArea();
 
     const int pad = uiPad();
     const bool compact = uiIsCompact();
@@ -552,7 +551,7 @@ void ThermalCamera::handleImageTouch(int32_t x, int32_t y) {
 }
 
 void ThermalCamera::saveSnapshot() {
-    if (!haveFrame_ || imageBuffer_ == nullptr || appHandle_ == nullptr) {
+    if (!haveFrame_ || imageBuffer_ == nullptr) {
         setStatusMessage("Nothing to save yet");
         return;
     }
@@ -560,16 +559,10 @@ void ThermalCamera::saveSnapshot() {
     setStatusMessage("Saving...");
     lv_refr_now(nullptr);
 
-    char directory[256];
-    size_t size = sizeof(directory);
-    tt_app_get_user_data_path(appHandle_, directory, &size);
-
-    // Create every missing level of the user data directory.
-    for (char* cursor = directory + 1; *cursor != '\0'; cursor++) {
-        if (*cursor != '/') continue;
-        *cursor = '\0';
-        mkdir(directory, 0755);
-        *cursor = '/';
+    char directory[192];
+    if (app_paths_get_user_data_directory(THERMAL_CAMERA_APP_ID, directory, sizeof(directory)) != ERROR_NONE) {
+        setStatusMessage("No storage available");
+        return;
     }
     mkdir(directory, 0755);
 
@@ -577,10 +570,12 @@ void ThermalCamera::saveSnapshot() {
     snapshotMakeBaseName(base, sizeof(base));
 
     char child[64];
-    char path[320];
-    size = sizeof(path);
+    char path[256];
     snprintf(child, sizeof(child), "%s.bmp", base);
-    tt_app_get_user_data_child_path(appHandle_, child, path, &size);
+    if (app_paths_get_user_data_path(THERMAL_CAMERA_APP_ID, child, path, sizeof(path)) != ERROR_NONE) {
+        setStatusMessage("Save path too long");
+        return;
+    }
     const bool imageSaved = snapshotWriteBmp(path, imageBuffer_, imageWidth_, imageHeight_);
 
     SnapshotMetadata metadata;
@@ -592,10 +587,10 @@ void ThermalCamera::saveSnapshot() {
     metadata.average = stats_.average;
     metadata.paletteName = PALETTE_NAMES[settings_.palette];
 
-    size = sizeof(path);
     snprintf(child, sizeof(child), "%s.csv", base);
-    tt_app_get_user_data_child_path(appHandle_, child, path, &size);
-    const bool dataSaved = snapshotWriteCsv(path, displayFrame_, metadata);
+    const bool dataSaved =
+        app_paths_get_user_data_path(THERMAL_CAMERA_APP_ID, child, path, sizeof(path)) == ERROR_NONE &&
+        snapshotWriteCsv(path, displayFrame_, metadata);
 
     char message[80];
     if (imageSaved && dataSaved) {

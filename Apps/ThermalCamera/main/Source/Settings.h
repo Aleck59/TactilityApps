@@ -63,6 +63,9 @@ struct CameraSettings {
     int spotIndex = (MLX_HEIGHT / 2) * MLX_WIDTH + (MLX_WIDTH / 2);
 };
 
+/** Manifest id of this app, used to resolve its storage paths. */
+static constexpr const char* THERMAL_CAMERA_APP_ID = "aleck59.thermalcamera";
+
 /** Load settings from persistent storage, keeping defaults for missing keys. */
 void settingsLoad(CameraSettings& settings);
 
